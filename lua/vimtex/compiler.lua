@@ -371,6 +371,23 @@ function builders.latexmk(self, passed)
     .. self:_get_executable_string()
     .. " "
     .. table.concat(self.options, " ")
+  if self.callback == 1 then
+    for name, status in pairs {
+      compiling = "compiling",
+      success = "success",
+      failure = "failure",
+    } do
+      command = command
+        .. " -e "
+        .. util.shellescape(
+          "$"
+            .. name
+            .. '_cmd = "echo vimtex_compiler_callback_'
+            .. status
+            .. '"'
+        )
+    end
+  end
   if passed ~= "" then
     command = command .. " " .. vim.trim(passed)
   end
@@ -719,6 +736,10 @@ function M.stop_all()
 end
 
 function M.clean(full)
+  vim.api.nvim_exec_autocmds("User", {
+    pattern = "VimtexEventCleanStarted",
+    modeline = false,
+  })
   local compiler = require("vimtex.state").get(vim.b.vimtex_id).compiler
   local buffer_compiler = vim.b.vimtex and vim.b.vimtex.compiler or {}
   for _, key in ipairs { "clean_ext", "out_dir", "aux_dir" } do
@@ -736,6 +757,10 @@ function M.clean(full)
     if restart then
       compiler.start()
     end
+    vim.api.nvim_exec_autocmds("User", {
+      pattern = "VimtexEventCleanFinished",
+      modeline = false,
+    })
   end, 100)
 end
 
@@ -783,6 +808,9 @@ function M.init_buffer()
     ["<plug>(vimtex-stop)"] = M.stop,
     ["<plug>(vimtex-stop-all)"] = M.stop_all,
     ["<plug>(vimtex-clean)"] = M.clean,
+    ["<plug>(vimtex-clean-full)"] = function()
+      M.clean(true)
+    end,
   }
   for lhs, callback in pairs(maps) do
     vim.keymap.set("n", lhs, callback, { buffer = true })
