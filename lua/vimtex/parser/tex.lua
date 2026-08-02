@@ -1,0 +1,240 @@
+local M = {}
+
+local cache = require "vimtex.cache"
+local kpsewhich = require "vimtex.kpsewhich"
+local paths = require "vimtex.paths"
+local util = require "vimtex.util"
+
+if vim.g["vimtex#re#tex_input"] == nil then
+  require("vimtex.re").init()
+end
+
+local function root_default()
+  local state = vim.b.vimtex
+  return type(state) == "table" and state.root or ""
+end
+
+local function matches(text, pattern)
+  return vim.fn.match(text, pattern) >= 0
+end
+
+local function options(opts)
+  return vim.tbl_extend(
+    "force",
+    { detailed = true, root = root_default() },
+    opts or {}
+  )
+end
+
+function M.find_closing(start, text, count, delimiter)
+  local pattern = delimiter == "{" and [[{\|}]] or [=[\[\|\]]=]
+  local opening = delimiter == "{" and "{" or "["
+  local index = start - 1
+  while count > 0 do
+    index = vim.fn.match(text, pattern, index + 1)
+    if index < 0 then
+      break
+    end
+    count = count + (vim.fn.strpart(text, index, 1) == opening and 1 or -1)
+  end
+  return index, count
+end
+
+local function input_to_filename(input, root)
+  local start = vim.fn.match(input, "{") + 1
+  local finish = M.find_closing(start, input, 1, "{")
+  local file = vim.fn.strpart(input, start, finish - start)
+  file = vim.fn.substitute(file, [[^\(\s\|"\)*]], "", "")
+  file = vim.fn.substitute(file, [[\(\s\|"\)*$]], "", "")
+  if vim.fn.fnamemodify(file, ":e") == "" then
+    file = file .. ".tex"
+  end
+  if paths.is_abs(file) then
+    return file
+  end
+  local candidate = root .. "/" .. file
+  if vim.fn.filereadable(candidate) == 1 then
+    return candidate
+  end
+  candidate = kpsewhich.find(file)
+  return vim.fn.filereadable(candidate) == 1 and candidate or file
+end
+
+function M.texorpdfstring(title)
+  local first = vim.fn.match(title, [[\\texorpdfstring]])
+  if first < 0 then
+    return title
+  end
+  local open_tex = vim.fn.match(title, "{", first + 1)
+  if open_tex < 0 then
+    return title
+  end
+  local close_tex = M.find_closing(open_tex + 1, title, 1, "{")
+  if close_tex < 0 then
+    return title
+  end
+  local open_pdf = vim.fn.match(title, "{", close_tex + 1)
+  if open_pdf < 0 then
+    return title
+  end
+  local close_pdf = M.find_closing(open_pdf + 1, title, 1, "{")
+  return vim.fn.strpart(title, 0, first)
+    .. vim.fn.strpart(title, open_tex + 1, close_tex - open_tex - 1)
+    .. M.texorpdfstring(vim.fn.strpart(title, close_pdf + 1))
+end
+
+function M.input_parser(line, current_file, root)
+  local result = { file = "", new_root = root }
+  local file = vim.fn.substitute(line, [[\\space\s*]], " ", "g")
+  if matches(file, vim.g["vimtex#re#tex_input_import"]) then
+    local current_root = matches(file, [[\\sub]])
+        and vim.fn.fnamemodify(current_file, ":p:h")
+      or root
+    local joined = vim.fn.substitute(file, [[\/\?}\s*{]], [[\/]], "g")
+    local candidate = input_to_filename(joined, current_root)
+    result.file = candidate ~= "" and candidate
+      or input_to_filename(
+        vim.fn.substitute(file, [[{.{-}}]], "", ""),
+        current_root
+      )
+    result.new_root = vim.fn.fnamemodify(result.file, ":p:h")
+  else
+    result.file = input_to_filename(file, root)
+  end
+  return result
+end
+
+local function parse_current(file, root, current)
+  current.lines, current.includes = {}, {}
+  local input_pattern = vim.g["vimtex#re#tex_input"]
+    .. [[|^\s*\\loadglsentries]]
+  if vim.fn.filereadable(file) == 0 then
+    return
+  end
+  for line_number, line in ipairs(vim.fn.readfile(file)) do
+    current.lines[#current.lines + 1] = { file, line_number, line }
+    if line:find("\\", 1, true) and matches(line, input_pattern) then
+      local result = M.input_parser(line, file, root)
+      current.lines[#current.lines + 1] = result
+      if file == result.file then
+        require("vimtex.log").error {
+          "Recursive file inclusion!",
+          "File: " .. vim.fn.fnamemodify(file, ":."),
+          "Line " .. line_number .. ":",
+          line,
+        }
+      else
+        current.includes[#current.includes + 1] = result
+      end
+    end
+  end
+end
+
+local function parse_recursive(file, root, store)
+  local current = store:get(file)
+  local file_time = vim.fn.getftime(file)
+  if file_time > current.ftime then
+    current.ftime = file_time
+    parse_current(file, root, current)
+  end
+  local parsed = {}
+  for _, value in ipairs(current.lines or {}) do
+    if vim.islist(value) then
+      parsed[#parsed + 1] = value
+    else
+      vim.list_extend(
+        parsed,
+        parse_recursive(value.file, value.new_root, store)
+      )
+    end
+  end
+  return parsed
+end
+
+local function parse_files_recursive(file, root, store)
+  local current = store:get(file)
+  local file_time = vim.fn.getftime(file)
+  if file_time > current.ftime then
+    current.ftime = file_time
+    parse_current(file, root, current)
+  end
+  if vim.fn.filereadable(file) == 0 then
+    return {}
+  end
+  local files = { file }
+  for _, included in ipairs(current.includes or {}) do
+    vim.list_extend(
+      files,
+      parse_files_recursive(included.file, included.new_root, store)
+    )
+  end
+  return files
+end
+
+function M.parse(file, opts)
+  opts = options(opts)
+  local store = cache.open("parser_tex", {
+    ["local"] = true,
+    persistent = false,
+    default = { ftime = -2 },
+  })
+  local parsed = parse_recursive(file, opts.root, store)
+  if opts.detailed == false or opts.detailed == 0 then
+    local lines = {}
+    for _, item in ipairs(parsed) do
+      lines[#lines + 1] = item[3]
+    end
+    return lines
+  end
+  return parsed
+end
+
+function M.parse_files(file, opts)
+  opts = options(opts)
+  local store = cache.open("parser_tex", {
+    ["local"] = true,
+    persistent = false,
+    default = { ftime = -2 },
+  })
+  return util.uniq_unsorted(parse_files_recursive(file, opts.root, store))
+end
+
+local function parse_preamble_recursive(file, root, parsed_files)
+  if vim.fn.filereadable(file) == 0 or parsed_files[file] then
+    return {}
+  end
+  parsed_files[file] = true
+  local lines = {}
+  for _, line in ipairs(vim.fn.readfile(file)) do
+    if matches(line, vim.g["vimtex#re#tex_input"]) then
+      local result = M.input_parser(line, file, root)
+      vim.list_extend(
+        lines,
+        parse_preamble_recursive(result.file, result.new_root, parsed_files)
+      )
+    else
+      lines[#lines + 1] = line
+    end
+    if matches(line, [[\\begin\s*{document}]]) then
+      break
+    end
+  end
+  return lines
+end
+
+function M.parse_preamble(file, opts)
+  opts = vim.tbl_extend("force", { root = root_default() }, opts or {})
+  local store = cache.open("parser_preamble", {
+    persistent = false,
+    default = { time = -2 },
+  })
+  local current = store:get(file)
+  local timestamp = math.min(os.time() - 60, vim.fn.getftime(file))
+  if timestamp > current.time then
+    current.time = timestamp
+    current.lines = parse_preamble_recursive(file, opts.root, {})
+  end
+  return vim.deepcopy(current.lines or {})
+end
+
+return M
