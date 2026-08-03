@@ -54,6 +54,7 @@ local defaults = {
   vimtex_doc_handlers = {},
   vimtex_echo_verbose_input = 1,
   vimtex_env_change_autofill = 0,
+  vimtex_env_change_hook = "",
   vimtex_env_toggle_map = {
     enumerate = "itemize",
     itemize = "enumerate",

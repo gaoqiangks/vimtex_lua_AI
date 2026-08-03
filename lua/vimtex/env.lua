@@ -18,6 +18,32 @@ local completion_environment
 local repeat_action
 local repeat_tick
 
+---Transform an environment name entered through cse/cs$.
+---@param name string
+---@return string
+function M.apply_change_hook(name)
+  local hook = M.change_hook or vim.g.vimtex_env_change_hook
+  if hook == nil or hook == "" then
+    return name
+  end
+
+  local ok, transformed
+  if type(hook) == "function" then
+    ok, transformed = pcall(hook, name)
+  else
+    ok, transformed = pcall(vim.fn.call, hook, { name })
+  end
+  if not ok then
+    require("vimtex.log").warning(
+      "Environment change hook failed; using the entered name",
+      tostring(transformed)
+    )
+    return name
+  end
+  return type(transformed) == "string" and transformed ~= "" and transformed
+    or name
+end
+
 function M.get_surrounding(kind)
   if kind == "normal" then
     return require("vimtex.delim").get_surrounding "env_tex"
@@ -391,11 +417,12 @@ local function prompt(kind)
   end
   local name = pair[1].name or pair[1].match
   completion_environment = name
-  return require("vimtex.ui").input {
+  local input = require("vimtex.ui").input {
     prompt = "Change surrounding environment: ",
     text = vim.g.vimtex_env_change_autofill == 1 and name or "",
     completion = "customlist,v:lua.require'vimtex.env'.input_complete",
   }
+  return input and M.apply_change_hook(input) or input
 end
 
 function M.init_buffer()

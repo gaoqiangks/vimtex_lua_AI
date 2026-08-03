@@ -1818,6 +1818,27 @@ OPTIONS                                                        *vimtex-options*
 
   Default: 0
 
+*g:vimtex_env_change_hook*
+  A function that transforms the environment name entered through
+  |<plug>(vimtex-env-change)| or |<plug>(vimtex-env-change-math)| before the
+  surrounding environment is changed. If the function returns an empty value,
+  or if it fails, the entered name is used unchanged.
+
+  For example: >vim
+
+    function! EnvChangeHook(name) abort
+      return a:name ==# 'theo' ? 'theorem' : a:name
+    endfunction
+    let g:vimtex_env_change_hook = 'EnvChangeHook'
+<
+  Lua callbacks can be assigned directly to the module: >lua
+
+    require('vimtex.env').change_hook = function(name)
+      return name == 'theo' and 'theorem' or name
+    end
+<
+  Default: `''`
+
 *g:vimtex_env_toggle_map*
   Specify the toggle map for |<plug>(vimtex-env-toggle)|. You can use this to
   change the desired toggle sequence.
