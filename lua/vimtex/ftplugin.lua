@@ -12,8 +12,6 @@ function M.setup()
   require("vimtex").setup()
   vim.b.did_ftplugin = 1
   require "vimtex.syntax"
-  require "vimtex.ui"
-  require "vimtex.util"
 
   if vim.g.vimtex_version_check ~= 0 and vim.fn.has "nvim-0.10" == 0 then
     vim.notify("VimTeX requires Neovim 0.10 or later", vim.log.levels.ERROR)

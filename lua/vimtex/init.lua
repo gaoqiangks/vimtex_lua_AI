@@ -43,9 +43,6 @@ function M.setup()
   end
 
   vim.g.loaded_vimtex = 1
-  require "vimtex.syntax"
-  require "vimtex.ui"
-  require "vimtex.util"
 
   vim.api.nvim_create_user_command("VimtexInverseSearch", function(opts)
     local line, file, column = M.parse_inverse_search_args(opts.args)
@@ -57,7 +54,9 @@ function M.setup()
   local group = vim.api.nvim_create_augroup("vimtex_main", { clear = true })
   vim.api.nvim_create_autocmd("VimLeavePre", {
     group = group,
-    callback = require("vimtex.main").quit,
+    callback = function()
+      require("vimtex.main").quit()
+    end,
   })
 end
 

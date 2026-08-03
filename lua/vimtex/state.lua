@@ -392,7 +392,7 @@ function M.cleanup(id)
     return
   end
   local id_counts = {}
-  for buffer = 1, vim.fn.bufnr "$" do
+  for _, buffer in ipairs(vim.api.nvim_list_bufs()) do
     if vim.fn.buflisted(buffer) == 1 then
       local buffer_id = vim.fn.getbufvar(buffer, "vimtex_id", -1)
       id_counts[buffer_id] = (id_counts[buffer_id] or 0) + 1

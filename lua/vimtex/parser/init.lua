@@ -1,19 +1,24 @@
 local M = {}
 
-local auxiliary = require "vimtex.parser.auxiliary"
-local bib = require "vimtex.parser.bib"
 local cache = require "vimtex.cache"
-local fls = require "vimtex.parser.fls"
 local paths = require "vimtex.paths"
 local tex = require "vimtex.parser.tex"
-local toc = require "vimtex.parser.toc"
 local util = require "vimtex.util"
 
 M.tex = tex.parse
 M.preamble = tex.parse_preamble
-M.auxiliary = auxiliary.parse
-M.fls = fls.parse
-M.bib = bib.parse
+
+function M.auxiliary(...)
+  return require("vimtex.parser.auxiliary").parse(...)
+end
+
+function M.fls(...)
+  return require("vimtex.parser.fls").parse(...)
+end
+
+function M.bib(...)
+  return require("vimtex.parser.bib").parse(...)
+end
 
 function M.toc(state)
   state = state or vim.b.vimtex
@@ -31,7 +36,7 @@ function M.toc(state)
   end
   if file_time > current.ftime then
     current.ftime = file_time
-    current.entries = toc.parse(state.tex)
+    current.entries = require("vimtex.parser.toc").parse(state.tex)
   end
   return vim.deepcopy(current.entries)
 end

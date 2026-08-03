@@ -742,4 +742,8 @@ function M.init_buffer()
   end
 end
 
+function M.cleanup_buffer(buffer)
+  states[buffer] = nil
+end
+
 return M

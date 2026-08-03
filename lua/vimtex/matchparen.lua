@@ -92,4 +92,11 @@ function M.init_buffer()
   end
 end
 
+function M.cleanup_buffer(buffer)
+  if groups[buffer] then
+    pcall(vim.api.nvim_del_augroup_by_id, groups[buffer])
+    groups[buffer] = nil
+  end
+end
+
 return M

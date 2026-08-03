@@ -1,5 +1,3 @@
-local utils = require "vimtex.utils.picker"
-
 ---@class VimtexSnacksOptions: snacks.picker.Config
 ---@field layers? string The layers to filter. Can be a substring of "ctli"
 ---                      corresponding to content, todos, labels, and includes.
@@ -9,6 +7,7 @@ local M = {}
 M.source = {
   source = "vimtex_toc",
   finder = function(opts)
+    local utils = require "vimtex.utils.picker"
     local layers = (opts and opts.layers) or "ctli"
 
     local ok, entries = pcall(require("vimtex.parser").toc)

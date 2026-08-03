@@ -49,6 +49,7 @@ local function module_enabled(name)
 end
 
 local buffer_ids = {}
+local buffer_modules = {}
 local disabled_mappings = {}
 
 local function init_filetype()
@@ -323,26 +324,38 @@ local function init_buffer()
     group = group,
     buffer = buffer,
     callback = function(args)
-      buffer_ids[args.file] = vim.b[args.buf].vimtex_id
+      buffer_ids[args.buf] = vim.b[args.buf].vimtex_id
     end,
   })
   vim.api.nvim_create_autocmd("BufWipeout", {
     group = group,
     buffer = buffer,
     callback = function(args)
-      local id = buffer_ids[args.file] or vim.b[args.buf].vimtex_id
+      local id = buffer_ids[args.buf] or vim.b[args.buf].vimtex_id
       require("vimtex.state").cleanup(id)
-      buffer_ids[args.file] = nil
+      for _, module in ipairs(buffer_modules[args.buf] or {}) do
+        if type(module.cleanup_buffer) == "function" then
+          pcall(module.cleanup_buffer, args.buf)
+        end
+      end
+      buffer_modules[args.buf] = nil
+      buffer_ids[args.buf] = nil
+      pcall(vim.api.nvim_del_augroup_by_id, group)
     end,
   })
+  local initialized = {}
   for _, name in ipairs(modules) do
     if not disabled[name] and module_enabled(name) then
       local ok, module = pcall(require, "vimtex." .. name)
       if ok and type(module.init_buffer) == "function" then
-        pcall(module.init_buffer)
+        local initialized_ok = pcall(module.init_buffer)
+        if initialized_ok then
+          initialized[#initialized + 1] = module
+        end
       end
     end
   end
+  buffer_modules[buffer] = initialized
 end
 
 function M.quit()
