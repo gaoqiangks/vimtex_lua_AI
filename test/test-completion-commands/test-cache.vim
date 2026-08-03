@@ -13,14 +13,15 @@ execute 'edit' fnameescape(s:file)
 
 lua << EOF
 local complete = require "vimtex.complete"
-local first = complete.complete("cmd", "cached", "\\cached")
-assert(#first == 0)
-
 -- Returned candidates must not mutate the cached source.
 local theorem = complete.complete("env", "theorem", "\\begin")
 assert(#theorem > 0)
 theorem[1].word = "mutated"
 assert(complete.complete("env", "theorem", "\\begin")[1].word ~= "mutated")
+
+-- Building the environment cache also builds the command cache.
+local first = complete.complete("cmd", "cached", "\\cached")
+assert(#first == 0)
 EOF
 
 call append(1, '\let\cachedtest=\relax')

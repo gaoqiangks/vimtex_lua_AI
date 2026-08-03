@@ -298,12 +298,19 @@ local function parse_preamble_recursive(file, root, parsed_files)
 end
 
 function M.parse_preamble(file, opts)
-  opts = vim.tbl_extend("force", { root = root_default() }, opts or {})
+  opts = vim.tbl_extend(
+    "force",
+    { root = root_default(), cached = false },
+    opts or {}
+  )
   local store = cache.open("parser_preamble", {
     persistent = false,
     default = { time = -2 },
   })
   local current = store:get(opts.root .. "\0" .. file)
+  if opts.cached and current.lines then
+    return util.copy_list(current.lines)
+  end
   local timestamp = get_mtime(file)
   if timestamp > current.time then
     current.time = timestamp

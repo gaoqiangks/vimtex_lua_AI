@@ -358,7 +358,7 @@ end
 local function load_package(package, kind)
   local memory = package_candidate_cache[package]
   if memory then
-    return memory[kind] or {}
+    return kind and (memory[kind] or {}) or memory
   end
 
   local file = complete_dir .. "/" .. package
@@ -385,7 +385,7 @@ local function load_package(package, kind)
   local stored = store.data[package] or {}
   if stored.signature == signature and type(stored.candidates) == "table" then
     package_candidate_cache[package] = stored.candidates
-    return stored.candidates[kind] or {}
+    return kind and (stored.candidates[kind] or {}) or stored.candidates
   end
 
   local result
@@ -416,18 +416,18 @@ local function load_package(package, kind)
   package_candidate_cache[package] = result
   store.data[package] = { signature = signature, candidates = result }
   store.modified = true
-  return result[kind] or {}
+  return kind and (result[kind] or {}) or result
 end
 
-local function document_candidates(kind)
+local function document_candidates()
   local project = require("vimtex.state").get(vim.b.vimtex_id)
   local lines = parser.tex(project.tex, { detailed = false })
-  local result = parse_source(lines, "local")[kind]
-  if kind == "cmd" and (vim.b.vimtex.packages or {}).glossaries then
+  local result = parse_source(lines, "local")
+  if (vim.b.vimtex.packages or {}).glossaries then
     local source = table.concat(lines, "\n")
     for block in source:gmatch "\\glsaddkey%s*(%b{}.-)%s*\\glsaddkey" do
       for command in block:gmatch "{\\([%a@]+)}" do
-        table.insert(result, {
+        table.insert(result.cmd, {
           word = command,
           mode = ".",
           kind = "[cmd: local]",
@@ -437,7 +437,7 @@ local function document_candidates(kind)
     local block = source:match "\\glsaddkey%s*(%b{}.*)$"
     if block then
       for command in block:gmatch "{\\([%a@]+)}" do
-        table.insert(result, {
+        table.insert(result.cmd, {
           word = command,
           mode = ".",
           kind = "[cmd: local]",
@@ -461,15 +461,22 @@ local function complete_commands(regex, kind)
   local cache_key = project.tex .. "\0" .. kind
   local cached = command_candidate_cache[cache_key]
   if not cached or cached.signature ~= signature then
-    local result = document_candidates(kind)
+    local result = document_candidates()
     for _, package in ipairs(packages()) do
-      vim.list_extend(result, load_package(package, kind))
+      local package_result = load_package(package)
+      vim.list_extend(result.cmd, package_result.cmd or {})
+      vim.list_extend(result.env, package_result.env or {})
     end
     if package_store and package_store.modified then
       package_store:write()
     end
-    cached = { signature = signature, candidates = uniq(result) }
-    command_candidate_cache[cache_key] = cached
+    for _, candidate_kind in ipairs { "cmd", "env" } do
+      command_candidate_cache[project.tex .. "\0" .. candidate_kind] = {
+        signature = signature,
+        candidates = uniq(result[candidate_kind]),
+      }
+    end
+    cached = command_candidate_cache[cache_key]
   end
   return copy_candidates(filter(cached.candidates, regex))
 end

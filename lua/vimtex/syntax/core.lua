@@ -2676,7 +2676,7 @@ endfunction
 " }}}1
 
 function! s:gather_newtheorems() abort " {{{1
-  let l:lines = v:lua.require('vimtex.parser').preamble(b:vimtex.tex)
+  let l:lines = v:lua.require('vimtex.parser').preamble(b:vimtex.tex, {'cached': v:true})
 
   call filter(l:lines, {_, x -> x =~# '^\s*\\newtheorem\>'})
   call map(l:lines, {_, x -> matchstr(x, '^\s*\\newtheorem\>\*\?{\zs[^}]*')})
