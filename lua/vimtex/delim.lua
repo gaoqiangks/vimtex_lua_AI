@@ -623,8 +623,8 @@ local function tex_content_end(line)
   end
 end
 
-local function environment_token(line, lnum, start, command, name)
-  local match = line:sub(start):match("^\\" .. command .. "%s*{[^}]*}")
+local function environment_token(line, lnum, start, finish, command, name)
+  local match = line:sub(start, finish)
   local raw_name = name or ""
   local starred = raw_name:sub(-1) == "*"
   return {
@@ -634,10 +634,15 @@ local function environment_token(line, lnum, start, command, name)
     is_open = command == "begin",
     lnum = lnum,
     cnum = start,
+    _finish = finish,
     match = match or "",
     name = starred and raw_name:sub(1, -2) or raw_name,
     starred = starred,
-    corr = (match or ""):gsub(command, command == "begin" and "end" or "begin", 1),
+    corr = (match or ""):gsub(
+      command,
+      command == "begin" and "end" or "begin",
+      1
+    ),
     re = {
       this = command == "begin" and M.re.env_tex.open or M.re.env_tex.close,
       corr = command == "begin" and M.re.env_tex.close or M.re.env_tex.open,
@@ -647,55 +652,117 @@ local function environment_token(line, lnum, start, command, name)
   }
 end
 
--- Find a surrounding TeX environment with one bounded pass over the buffer.
--- This avoids searchpairpos(), whose interaction with syntax state can become
--- pathologically slow even in a small document.
+local function environment_tokens(line, lnum)
+  local result, limit, start = {}, tex_content_end(line), 1
+  while start <= limit do
+    local begin_at, begin_end, begin_name =
+      line:find("\\begin%s*{([^}]*)}", start)
+    local end_at, end_end, end_name = line:find("\\end%s*{([^}]*)}", start)
+    local at, finish, command, name
+    if begin_at and begin_at <= limit and (not end_at or begin_at < end_at) then
+      at, finish, command, name = begin_at, begin_end, "begin", begin_name
+    elseif end_at and end_at <= limit then
+      at, finish, command, name = end_at, end_end, "end", end_name
+    else
+      break
+    end
+    result[#result + 1] =
+      environment_token(line, lnum, at, finish, command, name)
+    start = finish + 1
+  end
+  return result
+end
+
+local function environment_key(token)
+  return token.name .. (token.starred and "*" or "")
+end
+
+local function remove_pending(pending, key)
+  for index = #pending, 1, -1 do
+    if pending[index] == key then
+      table.remove(pending, index)
+      return true
+    end
+  end
+  return false
+end
+
+-- Search outwards from the cursor in bounded chunks. In the common case this
+-- only reads the few lines between the cursor and its surrounding delimiters;
+-- unlike the former full-buffer pass, its cost does not scale with all text
+-- after the matching environment.
 local function surrounding_tex_environment(opts)
-  local cursor = pos.val(pos.get_cursor())
-  local stack, pairs = {}, {}
-  for lnum, line in ipairs(vim.api.nvim_buf_get_lines(0, 0, -1, false)) do
-    local limit, start = tex_content_end(line), 1
-    while start <= limit do
-      local begin_at, begin_end, begin_name = line:find("\\begin%s*{([^}]*)}", start)
-      local end_at, end_end, end_name = line:find("\\end%s*{([^}]*)}", start)
-      local at, finish, command, name
-      if begin_at and begin_at <= limit and (not end_at or begin_at < end_at) then
-        at, finish, command, name = begin_at, begin_end, "begin", begin_name
-      elseif end_at and end_at <= limit then
-        at, finish, command, name = end_at, end_end, "end", end_name
-      else
-        break
-      end
-      local token = environment_token(line, lnum, at, command, name)
-      if command == "begin" then
-        stack[#stack + 1] = token
-      else
-        for index = #stack, 1, -1 do
-          local opening = stack[index]
-          if opening.name == token.name and opening.starred == token.starred then
-            table.remove(stack, index)
-            pairs[#pairs + 1] = { opening, token }
-            break
+  local cursor = pos.get_cursor()
+  local cursor_line, cursor_column = cursor[2], cursor[3]
+  local pending, open_depth = {}, {}
+  local opening, closing_depth
+  local chunk_size = 128
+
+  local chunk_end = cursor_line
+  while chunk_end >= 1 and not opening do
+    local chunk_start = math.max(1, chunk_end - chunk_size + 1)
+    local lines =
+      vim.api.nvim_buf_get_lines(0, chunk_start - 1, chunk_end, false)
+    for offset = #lines, 1, -1 do
+      local lnum = chunk_start + offset - 1
+      local tokens = environment_tokens(lines[offset], lnum)
+      for index = #tokens, 1, -1 do
+        local token = tokens[index]
+        local before_cursor = lnum < cursor_line
+          or token._finish < cursor_column
+          or (token.is_open and token.cnum <= cursor_column)
+        if before_cursor then
+          local key = environment_key(token)
+          if not token.is_open then
+            pending[#pending + 1] = key
+          elseif not remove_pending(pending, key) then
+            open_depth[key] = (open_depth[key] or 0) + 1
+            if token.name == "document" then
+              return { {}, {} }
+            end
+            if allowed(token, opts) then
+              opening, closing_depth = token, open_depth[key]
+              break
+            end
           end
         end
       end
-      start = finish + 1
+      if opening then
+        break
+      end
     end
+    chunk_end = chunk_start - 1
   end
-  local best
-  for _, pair in ipairs(pairs) do
-    local opening, closing = pair[1], pair[2]
-    if
-      opening.name ~= "document"
-      and allowed(opening, opts)
-      and pos.val(opening) <= cursor
-      and pos.val(closing) + #closing.match - 1 >= cursor
-      and (not best or pos.val(opening) > pos.val(best[1]))
-    then
-      best = pair
+  if not opening then
+    return { {}, {} }
+  end
+
+  local target, depth = environment_key(opening), closing_depth
+  local line_count = vim.api.nvim_buf_line_count(0)
+  local chunk_start = cursor_line
+  while chunk_start <= line_count do
+    local chunk_end_forward = math.min(line_count, chunk_start + chunk_size - 1)
+    local lines =
+      vim.api.nvim_buf_get_lines(0, chunk_start - 1, chunk_end_forward, false)
+    for offset, line in ipairs(lines) do
+      local lnum = chunk_start + offset - 1
+      for _, token in ipairs(environment_tokens(line, lnum)) do
+        local after_cursor = lnum > cursor_line
+          or token.cnum > cursor_column
+          or (not token.is_open and token._finish >= cursor_column)
+        if after_cursor and environment_key(token) == target then
+          depth = depth + (token.is_open and 1 or -1)
+          if depth == 0 then
+            token._finish, opening._finish = nil, nil
+            return { opening, token }
+          end
+        end
+      end
     end
+    chunk_start = chunk_end_forward + 1
   end
-  return best or { {}, {} }
+  opening._finish = nil
+  return { {}, {} }
 end
 
 local function surrounding_environment(kind, opts)

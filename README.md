@@ -15,28 +15,42 @@ and optimizing frequently used parsing and editing paths.
 
 The following benchmarks compare this Lua implementation with the upstream
 Vimscript implementation installed on the same machine. Both variants used
-Neovim 0.12.4, the same 393-line `flatdisk.tex` document, and a minimal
-configuration with the compiler, viewer, and folding disabled.
+Neovim 0.12.4 and a minimal configuration with the compiler, viewer, and
+folding disabled. Two real multi-file projects were tested:
 
-| Benchmark | Lua implementation | Vimscript implementation | Result |
+- `minisurf`: 66 TeX files, 27,753 lines, a 971-line main file, and 53
+  `\input` directives.
+- `functional-analysis-lecture`: 9 TeX files and 6,525 lines, stored on a
+  Windows-mounted OneDrive filesystem under WSL.
+
+| Project and benchmark | Lua implementation | Vimscript implementation | Result |
 |---|---:|---:|---:|
-| Open the TeX file and finish startup | 35.9 ms | 64.7 ms | 1.8x faster |
-| Find the surrounding environment | 0.30 ms/call | 121 ms/call | about 400x faster |
-| Parse one 393-line TeX file | 0.52 ms | 2.54 ms | 4.9x faster |
-| Memory growth while parsing 20 files | 1.25 MiB | 4.13 MiB | about 70% lower |
-| Resident memory after startup | 17.1 MiB | 16.2 MiB | 0.9 MiB higher |
+| `minisurf`: open main file and finish startup | 32.7 ms | 81.6 ms | 2.5x faster |
+| `minisurf`: parse the complete included project | 28.3 ms | 183.4 ms | 6.5x faster |
+| `minisurf`: memory growth during project parsing | 6.0 MiB | 16.3 MiB | about 62% lower |
+| `minisurf`: find an environment in a 3,048-line file | 0.0081 ms/call | 0.87 ms/call | about 108x faster |
+| `minisurf`: resident memory after startup | 17.4 MiB | 16.8 MiB | 0.6 MiB higher |
+| Lecture: open main file and finish startup | 48.8 ms | 117.1 ms | 2.4x faster |
+| Lecture: parse the complete included project | 41.2 ms | 97.6 ms | 2.4x faster |
+| Lecture: memory growth during project parsing | 1.8 MiB | 4.3 MiB | about 59% lower |
+| Lecture: find an environment in a 2,597-line file | 0.0095 ms/call | 0.87 ms/call | about 92x faster |
+| Lecture: resident memory after startup | 17.4 MiB | 16.5 MiB | 0.9 MiB higher |
 
-Startup figures are the mean of 10 runs. Parser figures cover 20 uncached
-copies of the same document. Surrounding-environment figures were measured
-after warm-up over repeated calls at the same nested environment.
+Startup figures are the mean of 10 runs. Project parsing figures are the mean
+of five clean Neovim processes. Both implementations returned the same 26,593
+included lines for `minisurf` and 5,997 included lines for the lecture project.
+Surrounding-environment figures are the mean of five runs with 500 post-warm-up
+calls at nested environments in the largest representative files.
 
-The large environment-search improvement comes primarily from algorithmic
-changes—particularly a bounded, single-pass Lua scanner—instead of from the
-language change alone. Results will vary with the document, machine, Neovim
-version, and configuration. A complete user configuration may spend much of
-its startup time in session management, fuzzy finding, completion, LSP, or
-other plugins, so end-to-end startup gains can be smaller than this isolated
-VimTeX comparison.
+The Lua implementation is substantially faster and uses less transient memory
+when parsing the complete project. Environment lookup uses a bounded,
+bidirectional chunk scanner: it searches outward from the cursor and normally
+reads only the lines between the cursor and the matching delimiters, instead
+of scanning the complete buffer. Results will vary with the document, machine,
+Neovim version, cursor position, and configuration. A complete user
+configuration may spend much of its startup time in session management, fuzzy
+finding, completion, LSP, or other plugins, so end-to-end startup gains can be
+smaller than this isolated VimTeX comparison.
 
 [![Gitter](https://badges.gitter.im/vimtex-chat/community.svg)](https://gitter.im/vimtex-chat/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
 ![CI tests](https://github.com/lervag/vimtex/workflows/CI%20tests/badge.svg)
