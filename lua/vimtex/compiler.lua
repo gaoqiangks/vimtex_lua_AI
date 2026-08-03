@@ -630,6 +630,13 @@ local function new(method, options)
       return vim.g.vimtex_compiler_latexrun_engines[program]
         or vim.g.vimtex_compiler_latexrun_engines._
     end
+    function self.clean(instance)
+      local output = instance.out_dir ~= "" and instance.out_dir or "."
+      require("vimtex.jobs").run(
+        "latexrun --clean-all -O " .. vim.fn.fnameescape(output),
+        { cwd = instance.file_info.root }
+      )
+    end
   elseif method == "generic" then
     self.enabled = self.command ~= ""
   else

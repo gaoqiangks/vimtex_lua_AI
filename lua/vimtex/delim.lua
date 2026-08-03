@@ -754,6 +754,11 @@ local function surrounding_tex_environment(opts)
           depth = depth + (token.is_open and 1 or -1)
           if depth == 0 then
             token._finish, opening._finish = nil, nil
+            -- Keep parity with delimiters produced by parse_environment().
+            -- Text objects use this command boundary to exclude all optional
+            -- and mandatory arguments of \begin{...} from the inner object.
+            opening.env_cmd =
+              require("vimtex.cmd").get_at(opening.lnum, opening.cnum)
             return { opening, token }
           end
         end

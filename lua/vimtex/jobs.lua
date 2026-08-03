@@ -185,17 +185,27 @@ function M.run(command, opts)
   if cwd == "" then
     cwd = nil
   end
-  local result = vim
-    .system(shell_command(command), {
-      cwd = cwd,
-      text = true,
-    })
-    :wait()
+  -- system() intentionally mirrors VimTeX's synchronous job backend: besides
+  -- waiting for the command, it updates v:shell_error.  vim.system():wait()
+  -- does not, which breaks both the documented Vim behavior and callers that
+  -- inspect v:shell_error after run().
+  local previous = cwd and vim.fn.getcwd() or nil
+  if cwd then
+    vim.cmd("cd " .. vim.fn.fnameescape(cwd))
+  end
+  local ok, output = pcall(vim.fn.system, shell_command(command))
+  local code = vim.v.shell_error
+  if previous then
+    vim.cmd("cd " .. vim.fn.fnameescape(previous))
+  end
+  if not ok then
+    error(output)
+  end
   return {
-    code = result.code,
-    signal = result.signal,
-    stdout = result.stdout or "",
-    stderr = result.stderr or "",
+    code = code,
+    signal = 0,
+    stdout = output or "",
+    stderr = "",
   }
 end
 
