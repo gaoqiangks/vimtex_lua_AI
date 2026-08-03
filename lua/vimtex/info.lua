@@ -1,9 +1,8 @@
 local M = {}
 
-local jobs = require "vimtex.jobs"
-local util = require "vimtex.util"
-
 local function os_info()
+  local jobs = require "vimtex.jobs"
+  local util = require "vimtex.util"
   local os_name = util.get_os()
   if os_name == "linux" then
     local result = vim.fn.executable "lsb_release" == 1
@@ -62,6 +61,8 @@ local function stringify(value, indent, lines, title)
 end
 
 local function system_info()
+  local jobs = require "vimtex.jobs"
+  local util = require "vimtex.util"
   local lines = {
     "System info:",
     "  OS: " .. os_info(),

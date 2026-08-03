@@ -1,5 +1,3 @@
-local jobs = require "vimtex.jobs"
-
 local M = {}
 
 local unicode_pairs = {
@@ -492,9 +490,9 @@ end
 
 function M.www(url)
   local commands = { linux = "xdg-open", mac = "open", win = "start" }
-  return jobs.start(
+  return require("vimtex.jobs").start(
     commands[M.get_os()] .. " " .. M.shellescape(url),
-    { detached = true }
+    { detached = true, forget = true }
   )
 end
 

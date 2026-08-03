@@ -4,19 +4,13 @@ local log = require "vimtex.log"
 local modules = {
   "cache",
   "cmd",
-  "complete",
   "compiler",
-  "context",
   "delim",
-  "doc",
   "env",
   "fold",
-  "format",
   "imaps",
-  "info",
   "log",
   "matchparen",
-  "misc",
   "motion",
   "qf",
   "state",
@@ -51,6 +45,66 @@ end
 local buffer_ids = {}
 local buffer_modules = {}
 local disabled_mappings = {}
+
+local function init_lazy_modules(disabled)
+  if not disabled.complete and module_enabled "complete" then
+    vim.bo.omnifunc = "v:lua.require'vimtex.complete'.omnifunc"
+  end
+  if not disabled.format and module_enabled "format" then
+    vim.bo.formatexpr = "v:lua.require('vimtex.format').formatexpr()"
+  end
+  if not disabled.context then
+    vim.api.nvim_buf_create_user_command(0, "VimtexContextMenu", function()
+      require("vimtex.context").menu()
+    end, {})
+    vim.keymap.set("n", "<plug>(vimtex-context-menu)", function()
+      require("vimtex.context").menu()
+    end, { buffer = true })
+  end
+  if not disabled.doc and module_enabled "doc" then
+    vim.api.nvim_buf_create_user_command(0, "VimtexDocPackage", function(opts)
+      require("vimtex.doc").package(opts.args)
+    end, { nargs = "?" })
+    vim.keymap.set(
+      "n",
+      "<plug>(vimtex-doc-package)",
+      "<cmd>VimtexDocPackage<cr>",
+      { buffer = true }
+    )
+  end
+  if not disabled.info then
+    vim.api.nvim_buf_create_user_command(0, "VimtexInfo", function(opts)
+      require("vimtex.info").open(opts.bang)
+    end, { bang = true })
+    vim.keymap.set("n", "<Plug>(vimtex-info)", function()
+      require("vimtex.info").open(false)
+    end, { buffer = true })
+    vim.keymap.set("n", "<Plug>(vimtex-info-full)", function()
+      require("vimtex.info").open(true)
+    end, { buffer = true })
+  end
+  if not disabled.misc then
+    vim.api.nvim_buf_create_user_command(0, "VimtexReload", function()
+      require("vimtex.misc").reload()
+    end, {})
+    local function count(opts, letters)
+      require("vimtex.misc").wordcount_display {
+        range = { opts.line1, opts.line2 },
+        detailed = opts.bang,
+        count_letters = letters,
+      }
+    end
+    vim.api.nvim_buf_create_user_command(0, "VimtexCountWords", function(opts)
+      count(opts, false)
+    end, { bang = true, range = "%" })
+    vim.api.nvim_buf_create_user_command(0, "VimtexCountLetters", function(opts)
+      count(opts, true)
+    end, { bang = true, range = "%" })
+    vim.keymap.set("n", "<Plug>(vimtex-reload)", function()
+      require("vimtex.misc").reload()
+    end, { buffer = true })
+  end
+end
 
 local function init_filetype()
   vim.bo.comments = "sO:% -,mO:%  ,eO:%%,:%"
@@ -343,6 +397,7 @@ local function init_buffer()
       pcall(vim.api.nvim_del_augroup_by_id, group)
     end,
   })
+  init_lazy_modules(disabled)
   local initialized = {}
   for _, name in ipairs(modules) do
     if not disabled[name] and module_enabled(name) then

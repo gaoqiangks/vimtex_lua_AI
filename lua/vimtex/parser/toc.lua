@@ -794,13 +794,15 @@ end
 function M.get_matchers()
   local matchers = { all = {}, preamble = {}, content = {}, d = {} }
   local overrides = vim.g.vimtex_toc_config_matchers or {}
+  local custom_matchers = vim.g.vimtex_toc_custom_matchers or {}
+  matchers.full_prefilter = next(overrides) ~= nil or #custom_matchers > 0
   for _, name in ipairs(matcher_names) do
     local matcher = constructors[name]()
     matcher = vim.tbl_deep_extend("force", matcher, overrides[name] or {})
     matcher.name = name
     matchers.all[#matchers.all + 1] = matcher
   end
-  for _, matcher in ipairs(vim.g.vimtex_toc_custom_matchers or {}) do
+  for _, matcher in ipairs(custom_matchers) do
     matchers.all[#matchers.all + 1] = matcher
   end
   for index = #matchers.all, 1, -1 do
@@ -862,7 +864,10 @@ function M.parse(file)
   local max_level = 0
   for _, item in ipairs(content) do
     local line = item[3]
-    if line:find("\\", 1, true) and matches(line, matchers.d.section.re) then
+    if
+      (matchers.full_prefilter or line:find("\\", 1, true))
+      and matches(line, matchers.d.section.re)
+    then
       max_level =
         math.max(max_level, M.level(matchers.d.section:level_name(line)))
     end
@@ -900,8 +905,11 @@ function M.parse(file)
         level.preamble = 0
         matcher_list = matchers.content
       elseif
-        (line_text:find("\\", 1, true) or line_text:find("%", 1, true))
-        and matches(line_text, matchers.prefilter)
+        (
+          matchers.full_prefilter
+          or line_text:find("\\", 1, true)
+          or line_text:find("%", 1, true)
+        ) and matches(line_text, matchers.prefilter)
       then
         for _, matcher in ipairs(matcher_list) do
           if matches(line_text, matcher.re) then

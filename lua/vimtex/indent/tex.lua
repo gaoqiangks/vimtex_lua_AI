@@ -2,6 +2,18 @@ local syntax = require "vimtex.syntax"
 
 local M = {}
 local configs = {}
+local option_group =
+  vim.api.nvim_create_augroup("vimtex_indent_options", { clear = true })
+vim.api.nvim_create_autocmd("OptionSet", {
+  group = option_group,
+  pattern = { "shiftwidth", "tabstop" },
+  callback = function()
+    local buffer = vim.api.nvim_get_current_buf()
+    if configs[buffer] then
+      configs[buffer].sw = vim.fn.shiftwidth()
+    end
+  end,
+})
 
 local function matches(line, pattern)
   return pattern ~= "" and vim.fn.match(line, pattern) >= 0
@@ -21,8 +33,8 @@ local function clean_line(line)
   end
 end
 
-local function in_verbatim(line_number)
-  local column = vim.fn.col { line_number, "$" } - 2
+local function in_verbatim(line_number, line)
+  local column = #(line or vim.fn.getline(line_number)) - 1
   local stack = syntax.stack(line_number, column)
   local zone, environment = false, false
   for _, group in ipairs(stack) do
@@ -44,7 +56,7 @@ local function previous_line(line_number)
   local line = vim.fn.getline(line_number)
   while
     line_number > 0
-    and (line:find "^%s*%%" ~= nil or in_verbatim(line_number))
+    and (line:find "^%s*%%" ~= nil or in_verbatim(line_number, line))
   do
     line_number = vim.fn.prevnonblank(line_number - 1)
     line = vim.fn.getline(line_number)
@@ -149,7 +161,7 @@ local function indent_amps(config, line_number, line, previous_number, previous)
     prev_line = previous,
     prev_ind = previous_number > 0 and vim.fn.indent(previous_number) or 0,
   }
-  if vim.g.vimtex_indent_on_ampersands == 0 then
+  if not config.ampersands then
     return context.prev_ind, context
   end
   if
@@ -244,7 +256,7 @@ end
 
 local function indent_conditionals(config, line, previous)
   local conditional = config.conditionals
-  if vim.tbl_isempty(conditional) then
+  if config.conditionals_empty then
     return 0
   end
   local indent = 0
@@ -304,14 +316,13 @@ function M.indent(line_number)
   if not config then
     return 0
   end
-  config.sw = vim.fn.shiftwidth()
   local previous_number, previous =
     previous_line(vim.fn.prevnonblank(line_number - 1))
   if previous_number == 0 then
     return vim.fn.indent(line_number)
   end
   local line = vim.fn.getline(line_number)
-  if in_verbatim(line_number) then
+  if in_verbatim(line_number, line) then
     return line == "" and vim.fn.indent(previous_number)
       or vim.fn.indent(line_number)
   end
@@ -327,7 +338,7 @@ function M.indent(line_number)
   indent = indent + indent_items(config, line, previous, previous_number)
   indent = indent + indent_delims(config, line, previous)
   indent = indent + indent_conditionals(config, line, previous)
-  if vim.g.vimtex_indent_tikz_commands ~= 0 then
+  if config.tikz then
     indent = indent + indent_tikz(config, previous_number, previous)
   end
   return math.max(indent, 0)
@@ -366,6 +377,8 @@ function M.setup()
   local buffer = vim.api.nvim_get_current_buf()
   configs[buffer] = {
     sw = vim.fn.shiftwidth(),
+    ampersands = vim.g.vimtex_indent_on_ampersands ~= 0,
+    tikz = vim.g.vimtex_indent_tikz_commands ~= 0,
     amp = not_backslash .. [[\&]],
     align = "^[ \\t\\\\]*" .. not_backslash .. [[\&]],
     depth_begin = not_backslash .. [=[\\%(begin\s*\{|[|\w+\{\s*$)]=],
@@ -384,6 +397,7 @@ function M.setup()
     close = closing,
     delim_trivial = opening == "" or closing == "",
     conditionals = vim.g.vimtex_indent_conditionals,
+    conditionals_empty = next(vim.g.vimtex_indent_conditionals) == nil,
     tikz_commands = [[\v\\%(draw|fill|path|node|coordinate|clip|add%(legendentry|plot))]],
   }
   local config = configs[buffer]

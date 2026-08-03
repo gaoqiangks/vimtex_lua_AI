@@ -91,6 +91,7 @@ function M.init()
   vim.b.vimtex_syntax = configs
 
   local loaded = 0
+  local loaded_names = {}
   for name, config in pairs(configs) do
     if
       (config.__load == true or config.__load == 1)
@@ -98,15 +99,18 @@ function M.init()
     then
       load_module(name, config)
       loaded_packages[buffer][name] = true
-      configs = vim.b.vimtex_syntax
-      config = configs[name] or config
-      config.__loaded = 1
-      configs[name] = config
-      vim.b.vimtex_syntax = configs
+      loaded_names[#loaded_names + 1] = name
       loaded = loaded + 1
     end
   end
   if loaded > 0 then
+    configs = vim.b.vimtex_syntax
+    for _, name in ipairs(loaded_names) do
+      local config = configs[name] or {}
+      config.__loaded = 1
+      configs[name] = config
+    end
+    vim.b.vimtex_syntax = configs
     vim.fn["VimtexSyntaxCore_init_custom"]()
   end
 end

@@ -212,7 +212,7 @@ function M.texdoc(context)
   if vim.v.shell_error ~= 0 then
     return false
   end
-  require("vimtex.jobs").start("texdoc " .. context.selected)
+  require("vimtex.jobs").start("texdoc " .. context.selected, { forget = true })
   return true
 end
 

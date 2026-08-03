@@ -10,11 +10,26 @@ local complete_dir = vim.fn.fnamemodify(
 local active
 local texmf_cache = {}
 local bib_candidate_cache = {}
+local bib_candidate_order = {}
+
+local function cache_bib_candidates(key, value)
+  if bib_candidate_cache[key] == nil then
+    bib_candidate_order[#bib_candidate_order + 1] = key
+    if #bib_candidate_order > 8 then
+      bib_candidate_cache[table.remove(bib_candidate_order, 1)] = nil
+    end
+  end
+  bib_candidate_cache[key] = value
+end
 
 local function copy_candidates(candidates)
   local result = {}
   for index, candidate in ipairs(candidates) do
-    result[index] = vim.tbl_extend("force", {}, candidate)
+    local copy = {}
+    for key, value in pairs(candidate) do
+      copy[key] = value
+    end
+    result[index] = copy
   end
   return result
 end
@@ -25,6 +40,9 @@ local function matches(text, regex, ignore_case)
 end
 
 local function filter(candidates, regex, options)
+  if regex == "" then
+    return candidates
+  end
   options = options or {}
   local anchor = options.anchor ~= false
   local ignore_case = vim.g.vimtex_complete_ignore_case == 1
@@ -172,10 +190,10 @@ local function complete_bib(regex)
         )
       end
     end
-    bib_candidate_cache[project.tex] = {
+    cache_bib_candidates(project.tex, {
       signature = signature,
       candidates = copy_candidates(result),
-    }
+    })
   end
   paths.popd()
   if vim.g.vimtex_complete_bib.simple == 1 then

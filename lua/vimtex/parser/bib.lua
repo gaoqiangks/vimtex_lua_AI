@@ -204,9 +204,16 @@ end
 ---@param line string The new line to parse
 ---@return table item Current entry with updated body
 local function parse_tail(item, line)
-  item.level = item.level
-    + line:gsub("[^{]", ""):len()
-    - line:gsub("[^}]", ""):len()
+  local level = item.level
+  for i = 1, #line do
+    local byte = line:byte(i)
+    if byte == 123 then -- {
+      level = level + 1
+    elseif byte == 125 then -- }
+      level = level - 1
+    end
+  end
+  item.level = level
   if item.level > 0 then
     item.body = item.body .. line
   else
@@ -256,17 +263,17 @@ local function get_tag_value_concat(body, head, strings, pre_value)
   local value = ""
   local new_head = head
 
-  local first_char = body:sub(head + 1, head + 1)
-  if first_char == "{" then
+  local first_byte = body:byte(head + 1)
+  if first_byte == 123 then -- {
     local sum = 1
     local i = head + 1
     local n = #body
 
     while sum > 0 and i <= n do
-      local char = body:sub(i + 1, i + 1)
-      if char == "{" then
+      local byte = body:byte(i + 1)
+      if byte == 123 then
         sum = sum + 1
-      elseif char == "}" then
+      elseif byte == 125 then
         sum = sum - 1
       end
 
@@ -275,15 +282,22 @@ local function get_tag_value_concat(body, head, strings, pre_value)
 
     value = body:sub(head + 2, i - 1)
     new_head = matchend(body, "^%s*", i)
-  elseif first_char == '"' then
+  elseif first_byte == 34 then -- "
     local index = body:find('[^\\]"', head + 1)
-    if index < 0 then
+    if not index then
       return "bib.lua: get_tag_value_concat failed", -1
     end
 
     value = body:sub(head + 2, index)
     new_head = matchend(body, "^%s*", index + 1)
-  elseif first_char:match "%w" then
+  elseif
+    first_byte
+    and (
+      first_byte >= 48 and first_byte <= 57
+      or first_byte >= 65 and first_byte <= 90
+      or first_byte >= 97 and first_byte <= 122
+    )
+  then
     value = body:match("^%w[0-9a-zA-Z_-]*", head + 1)
     new_head = matchend(body, "^%s*", head + #value)
     value = strings[value] or ("@(" .. value .. ")")
@@ -395,7 +409,7 @@ function M.parse_cheap(start_line, end_line, opts)
   local starts = {}
 
   for index, line in ipairs(lines) do
-    if vim.trim(line):sub(1, 1) == "@" then
+    if line:find "^%s*@" then
       starts[#starts + 1] = index
     end
   end
@@ -430,12 +444,27 @@ function M.parse_cheap(start_line, end_line, opts)
 end
 
 local parse_cache = {}
+local parse_cache_order = {}
 local backends = { lua = true, vim = true, bibtex = true, bibparse = true }
+
+local function cache_parsed(key, value)
+  if parse_cache[key] == nil then
+    parse_cache_order[#parse_cache_order + 1] = key
+    if #parse_cache_order > 32 then
+      parse_cache[table.remove(parse_cache_order, 1)] = nil
+    end
+  end
+  parse_cache[key] = value
+end
 
 local function copy_entries(entries)
   local result = {}
   for index, entry in ipairs(entries) do
-    result[index] = vim.tbl_extend("force", {}, entry)
+    local copy = {}
+    for key, value in pairs(entry) do
+      copy[key] = value
+    end
+    result[index] = copy
   end
   return result
 end
@@ -463,10 +492,10 @@ function M.parse(filename, opts)
   end
   if backend == "bibtex" then
     local result = parse_with_bibtex(filename)
-    parse_cache[cache_key] = {
+    cache_parsed(cache_key, {
       signature = signature,
       entries = copy_entries(result),
-    }
+    })
     return result
   end
 
@@ -501,10 +530,10 @@ function M.parse(filename, opts)
   for _, x in ipairs(items) do
     table.insert(result, parse_item(x, strings))
   end
-  parse_cache[cache_key] = {
+  cache_parsed(cache_key, {
     signature = signature,
     entries = copy_entries(result),
-  }
+  })
   return result
 end
 

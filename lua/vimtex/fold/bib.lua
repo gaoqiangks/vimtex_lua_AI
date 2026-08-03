@@ -3,9 +3,17 @@ local parser = require "vimtex.parser.bib"
 local M = {}
 local level_cache = { buffer = -1, tick = -1, levels = {} }
 
-local function count(text, character)
-  local _, total = text:gsub(vim.pesc(character), "")
-  return total
+local function count_braces(text)
+  local opened, closed = 0, 0
+  for i = 1, #text do
+    local byte = text:byte(i)
+    if byte == 123 then
+      opened = opened + 1
+    elseif byte == 125 then
+      closed = closed + 1
+    end
+  end
+  return opened, closed
 end
 
 local function get_max_key_width()
@@ -67,10 +75,11 @@ local function refresh_levels()
       local is_first = line:match "^%s*@" ~= nil
       if is_first then
         firstline = line_number
-        opened, closed = count(line, "{"), count(line, "}")
+        opened, closed = count_braces(line)
       elseif firstline > 0 then
-        opened = opened + count(line, "{")
-        closed = closed + count(line, "}")
+        local line_opened, line_closed = count_braces(line)
+        opened = opened + line_opened
+        closed = closed + line_closed
       end
       if firstline == 0 then
         levels[line_number] = 0

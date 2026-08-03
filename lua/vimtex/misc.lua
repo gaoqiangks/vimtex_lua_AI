@@ -1,10 +1,5 @@
 local M = {}
 
-local jobs = require "vimtex.jobs"
-local log = require "vimtex.log"
-local parser = require "vimtex.parser"
-local util = require "vimtex.util"
-
 function M.get_graphicspath(filename)
   local state = vim.b.vimtex
   local roots = state.graphicspath or {}
@@ -26,14 +21,14 @@ function M.wordcount(opts)
   local range = opts.range or { 1, vim.fn.line "$" }
   local state = vim.b.vimtex
   local file = range[1] == 1 and range[2] == vim.fn.line "$" and state
-    or parser.selection_to_texfile { range = range }
+    or require("vimtex.parser").selection_to_texfile { range = range }
   local command = "texcount -nosub -sum "
     .. ((opts.count_letters == true or opts.count_letters == 1) and "-letter " or "")
     .. ((opts.detailed == true or opts.detailed == 1) and "-inc " or "-q -1 -merge ")
     .. (vim.g.vimtex_texcount_custom_arg or "")
     .. " "
-    .. util.shellescape(file.base)
-  local lines = jobs.capture(command, { cwd = file.root })
+    .. require("vimtex.util").shellescape(file.base)
+  local lines = require("vimtex.jobs").capture(command, { cwd = file.root })
   if file.base ~= state.base then
     vim.fn.delete(file.tex)
   end
@@ -56,7 +51,7 @@ end
 function M.wordcount_display(opts)
   local output = M.wordcount(opts)
   if opts.detailed ~= true and opts.detailed ~= 1 then
-    log.info(
+    require("vimtex.log").info(
       "Counted "
         .. ((opts.count_letters == true or opts.count_letters == 1) and "letters: " or "words: ")
         .. output

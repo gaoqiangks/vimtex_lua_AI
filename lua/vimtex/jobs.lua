@@ -43,6 +43,9 @@ function Job:start()
   }, function(result)
     self.result = result
     self.completed = true
+    if self.forget then
+      active[self.id] = nil
+    end
   end)
   self.job = self.handle.pid
   return self
@@ -105,22 +108,30 @@ end
 
 function M.start(command, opts)
   opts = opts or {}
+  next_id = next_id + 1
   local job = setmetatable({
+    id = next_id,
     cmd_raw = command,
     cwd = opts.cwd == nil and default_cwd() or opts.cwd,
     wait_timeout = tonumber(opts.wait_timeout) or 5000,
     capture_output = opts.capture_output == true,
     detached = opts.detached == true,
+    forget = opts.forget == true,
     completed = false,
-  }, Job):start()
-  next_id = next_id + 1
+  }, Job)
   active[next_id] = job
+  job:start()
   return next_id
+end
+
+function M.forget(id)
+  active[id] = nil
 end
 
 function M.stop(id)
   if active[id] then
     active[id]:stop()
+    active[id] = nil
   end
 end
 

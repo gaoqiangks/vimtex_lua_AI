@@ -709,13 +709,30 @@ local function modeline_has_foldmethod()
   if count == 0 then
     return false
   end
-  local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
-  for index, line in ipairs(lines) do
-    if
-      (index <= count or index > #lines - count)
-      and line:match "vim:.*f%a*m"
-      and (line:match "foldmethod" or line:match "fdm")
-    then
+  local total = vim.api.nvim_buf_line_count(0)
+  local function contains(lines)
+    for _, line in ipairs(lines) do
+      if
+        line:match "vim:.*f%a*m"
+        and (line:match "foldmethod" or line:match "fdm")
+      then
+        return true
+      end
+    end
+    return false
+  end
+  local first = vim.api.nvim_buf_get_lines(0, 0, math.min(count, total), false)
+  if contains(first) then
+    return true
+  end
+  if total > count then
+    local last = vim.api.nvim_buf_get_lines(
+      0,
+      math.max(total - count, count),
+      total,
+      false
+    )
+    if contains(last) then
       return true
     end
   end

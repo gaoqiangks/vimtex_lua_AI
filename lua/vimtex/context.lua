@@ -89,7 +89,7 @@ local function cite_actions(command, word)
               vim.g.vimtex_context_pdf_viewer
                 .. " "
                 .. require("vimtex.util").shellescape(file),
-              { detached = true }
+              { detached = true, forget = true }
             )
           end
         end,

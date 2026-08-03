@@ -305,6 +305,7 @@ function base.__pprint(self)
 end
 
 local rc_file_cache = {}
+local rc_file_order = {}
 
 local function read_rc_file(path)
   local stat = vim.uv.fs_stat(path)
@@ -317,6 +318,12 @@ local function read_rc_file(path)
     return cached.lines
   end
   local lines = util.readfile(path)
+  if rc_file_cache[path] == nil then
+    rc_file_order[#rc_file_order + 1] = path
+    if #rc_file_order > 16 then
+      rc_file_cache[table.remove(rc_file_order, 1)] = nil
+    end
+  end
   rc_file_cache[path] = { mtime = mtime, size = stat.size, lines = lines }
   return lines
 end

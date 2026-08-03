@@ -1,7 +1,6 @@
 local M = {}
 
 local cache = require "vimtex.cache"
-local kpsewhich = require "vimtex.kpsewhich"
 local paths = require "vimtex.paths"
 local util = require "vimtex.util"
 
@@ -85,7 +84,7 @@ local function input_to_filename(input, root)
   if vim.fn.filereadable(candidate) == 1 then
     return candidate
   end
-  candidate = kpsewhich.find(file)
+  candidate = require("vimtex.kpsewhich").find(file)
   return vim.fn.filereadable(candidate) == 1 and candidate or file
 end
 

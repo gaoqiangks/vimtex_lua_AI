@@ -1,5 +1,4 @@
 local M = {}
-local jobs = require "vimtex.jobs"
 local log = require "vimtex.log"
 local paths = require "vimtex.paths"
 local util = require "vimtex.util"
@@ -56,10 +55,11 @@ function viewer.xdo_focus_vim(self)
   if not self:xdo_check() then
     return
   end
-  local ids =
-    jobs.capture("xdotool search --onlyvisible --pid " .. vim.fn.getpid())
+  local ids = require("vimtex.jobs").capture(
+    "xdotool search --onlyvisible --pid " .. vim.fn.getpid()
+  )
   if ids[1] then
-    jobs.run("xdotool windowactivate " .. ids[#ids])
+    require("vimtex.jobs").run("xdotool windowactivate " .. ids[#ids])
   end
 end
 
@@ -92,7 +92,8 @@ local function generic_start(self, output)
     command = command:gsub(pattern, tostring(value))
   end
   self.cmd_start = command
-  self.job = jobs.start(command, { detached = util.get_os() ~= "win" })
+  self.job =
+    require("vimtex.jobs").start(command, { detached = util.get_os() ~= "win" })
 end
 
 local function make(method, state)
@@ -155,7 +156,7 @@ local function make(method, state)
         .. util.shellescape(output)
     end
     instance.cmd_start = command
-    instance.job = jobs.start(command, { detached = true })
+    instance.job = require("vimtex.jobs").start(command, { detached = true })
   end
   for name, callback in pairs(self) do
     if type(callback) == "function" then

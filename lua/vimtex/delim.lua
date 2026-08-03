@@ -270,13 +270,15 @@ local function matching_simple(delimiter, pair, skip)
 end
 
 local function parse_environment(context)
-  local open = context.match:match "^\\begin" ~= nil
+  local open = context.match:sub(1, 6) == "\\begin"
+  local raw_name = context.match:match "{([^}]*)}" or ""
+  local starred = raw_name:sub(-1) == "*"
   local result = vim.tbl_extend("force", context, {
     type = "env",
     side = open and "open" or "close",
     is_open = open,
-    name = vim.fn.matchstr(context.match, [[{\zs[^}*]*\ze\*\?}]]),
-    starred = vim.fn.match(context.match, [[\*}$]]) > 0,
+    name = starred and raw_name:sub(1, -2) or raw_name,
+    starred = starred,
     corr = context.match:gsub(
       open and "begin" or "end",
       open and "end" or "begin",
@@ -321,8 +323,8 @@ local function parse_tex(context, opts)
 end
 
 local function parse_latex(context)
-  local open = vim.fn.match(context.match, [[\\(\|\\\[]]) >= 0
-  local paren = vim.fn.match(context.match, [[\\(\|\\)]]) >= 0
+  local open = context.match == [[\(]] or context.match == "\\["
+  local paren = context.match == [[\(]] or context.match == [[\)]]
   local ropen = vim.g["vimtex#re#not_bslash"]
     .. (paren and [[\m\\(]] or "\\m\\\\\\[")
   local rclose = vim.g["vimtex#re#not_bslash"]
@@ -463,10 +465,10 @@ function M._get(opts)
   then
     return parse_tex(context, opts)
   end
-  if vim.fn.match(match, [[^\\\%((\|)\|\[\|\]\)]]) >= 0 then
+  if match == [[\(]] or match == [[\)]] or match == "\\[" or match == "\\]" then
     return parse_latex(context)
   end
-  if vim.fn.match(match, [[^\\\%(left\|right\)\s*\.]]) >= 0 then
+  if match:match [[^\left%s*%.]] or match:match [[^\right%s*%.]] then
     return parse_unmatched(context)
   end
   if vim.fn.match(match, "^" .. M.re.delim_all.both) >= 0 then
