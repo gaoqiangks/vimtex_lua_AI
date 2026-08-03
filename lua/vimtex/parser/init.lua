@@ -93,7 +93,14 @@ function M.selection_to_texfile(opts)
     return {}
   end
   local selected = vim.list_slice(lines, first, last)
-  if table.concat(selected):gsub("%s", "") == "" then
+  local has_content = false
+  for _, line in ipairs(selected) do
+    if line:find "%S" then
+      has_content = true
+      break
+    end
+  end
+  if not has_content then
     return {}
   end
 

@@ -309,7 +309,7 @@ function M.parse_preamble(file, opts)
     current.time = timestamp
     current.lines = parse_preamble_recursive(file, opts.root, {})
   end
-  return vim.list_slice(current.lines or {})
+  return util.copy_list(current.lines or {})
 end
 
 return M

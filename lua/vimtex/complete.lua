@@ -79,7 +79,7 @@ local function uniq(candidates)
     local key = type(candidate) == "table" and candidate.word or candidate
     if key and key ~= "" and not seen[key] then
       seen[key] = true
-      table.insert(result, candidate)
+      result[#result + 1] = candidate
     end
   end
   return result
@@ -87,7 +87,7 @@ end
 
 local function texmf(filetype)
   if texmf_cache[filetype] then
-    return vim.list_slice(texmf_cache[filetype])
+    return util.copy_list(texmf_cache[filetype])
   end
   local result = {}
   local home = vim.env.TEXMFHOME or ""
@@ -98,20 +98,20 @@ local function texmf(filetype)
     for _, file in
       ipairs(vim.fn.glob(home .. "/**/*." .. filetype, false, true))
     do
-      table.insert(result, vim.fn.fnamemodify(file, ":t:r"))
+      result[#result + 1] = vim.fn.fnamemodify(file, ":t:r")
     end
   end
   for _, database in ipairs(require("vimtex.kpsewhich").run "--all ls-R") do
     if vim.fn.filereadable(database) == 1 then
       for _, line in ipairs(util.readfile(database)) do
         if line:match("%." .. filetype .. "$") then
-          table.insert(result, vim.fn.fnamemodify(line, ":r"))
+          result[#result + 1] = vim.fn.fnamemodify(line, ":r")
         end
       end
     end
   end
   texmf_cache[filetype] = uniq(result)
-  return vim.list_slice(texmf_cache[filetype])
+  return util.copy_list(texmf_cache[filetype])
 end
 
 local function candidate_from_bib(entry)
@@ -170,7 +170,7 @@ local function complete_bib(regex)
     result = {}
     for _, file in ipairs(files) do
       for _, entry in ipairs(parser.bib(file)) do
-        table.insert(result, candidate_from_bib(entry))
+        result[#result + 1] = candidate_from_bib(entry)
       end
     end
     for _, line in ipairs(parser.tex(project.tex, { detailed = false })) do
@@ -243,7 +243,7 @@ end
 local function packages()
   local result = { "default", "class-" .. (vim.b.vimtex.documentclass or "") }
   vim.list_extend(result, vim.tbl_keys(vim.b.vimtex.packages or {}))
-  local queue, seen = vim.list_slice(result), {}
+  local queue, seen = util.copy_list(result), {}
   local index = 1
   while index <= #queue do
     local package = queue[index]

@@ -28,7 +28,10 @@ local function command_context(name)
     end
   end
   packages = readable
-  local queue = vim.list_slice(packages)
+  local queue = {}
+  for index = 1, #packages do
+    queue[index] = packages[index]
+  end
   local index = 1
   while index <= #queue do
     local package = queue[index]

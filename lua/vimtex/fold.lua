@@ -449,10 +449,9 @@ constructors.items = function(cfg)
     [[^\s*\\item>]], [[^\s*\\%(item>|end]] .. environments .. [[)]]
   object.re.start, object.re["end"] =
     [[\v]] .. object.re.fold_re, [[\v]] .. object.re.fold_re_next
-  function object:level(line, lnum, state)
+  function object:level(line, lnum, state, nextline)
     local env_value = state.dict.envs and state.dict.envs:level(line, lnum)
       or nil
-    local nextline = vim.fn.getline(lnum + 1)
     if matches(line, self.re.env_start) then
       table.insert(self.state, { folded = false })
     elseif matches(line, self.re.env_end) then
@@ -520,26 +519,35 @@ constructors.sections = function(cfg)
       "|"
     )
     .. ")"
+  object.re.levels = {}
+  for _, section in ipairs(object.sections) do
+    object.re.levels[#object.re.levels + 1] = [[\v^\s*%(\\|\% [fF]ake)]]
+      .. section
+      .. [[:?>]]
+  end
   function object:refresh()
     local time = vim.api.nvim_buf_get_changedtick(0)
     if time == self.time then
       return
     end
     self.time, self.folds = time, {}
-    local lines, level = vim.api.nvim_buf_get_lines(0, 0, -1, false), 0
+    local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+    local candidates, level = {}, 0
     local part_count = 0
     for _, line in ipairs(lines) do
-      if matches(line, self.re.parts) then
-        part_count = part_count + 1
+      if line:find "^%s*\\" or line:find "^%s*%% [fF]ake" then
+        candidates[#candidates + 1] = line
+        if matches(line, self.re.parts) then
+          part_count = part_count + 1
+        end
       end
     end
     if part_count >= 2 then
       level = level + 1
       table.insert(self.folds, 1, { self.re.parts, level })
     end
-    for _, section in ipairs(self.sections) do
-      local pattern = [[\v^\s*%(\\|\% [fF]ake)]] .. section .. [[:?>]]
-      for _, line in ipairs(lines) do
+    for _, pattern in ipairs(self.re.levels) do
+      for _, line in ipairs(candidates) do
         if matches(line, pattern) then
           level = level + 1
           table.insert(self.folds, 1, { pattern, level })
@@ -666,7 +674,7 @@ function M.level(lnum)
     return "="
   end
   for _, object in ipairs(state.ordered) do
-    local value = object:level(line, lnum, state)
+    local value = object:level(line, lnum, state, nextline)
     if value ~= nil and value ~= "" then
       return value
     end

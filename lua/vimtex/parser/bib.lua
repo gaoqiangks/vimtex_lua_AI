@@ -178,7 +178,7 @@ local function parse_with_bibtex(filename)
       if fields[5] and fields[5] ~= "" then
         entry.title = fields[5]
       end
-      table.insert(result, entry)
+      result[#result + 1] = entry
     end
   end
   vim.fn.delete(directory, "rf")
@@ -417,7 +417,7 @@ function M.parse_cheap(start_line, end_line, opts)
   local entries = {}
   for index, first in ipairs(starts) do
     local last = (starts[index + 1] or (#lines + 1)) - 1
-    local head = table.concat(vim.list_slice(lines, first, last), "")
+    local head = table.concat(lines, "", first, last)
     local entry_type, key = head:match "@%s*(%a+)%s*{%s*([^,%s]+)%s*,"
 
     if entry_type and key then
@@ -528,7 +528,7 @@ function M.parse(filename, opts)
 
   local result = {}
   for _, x in ipairs(items) do
-    table.insert(result, parse_item(x, strings))
+    result[#result + 1] = parse_item(x, strings)
   end
   cache_parsed(cache_key, {
     signature = signature,

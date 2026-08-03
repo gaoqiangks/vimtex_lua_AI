@@ -447,16 +447,28 @@ function M.texsplit(text)
   end
   local result, start, depth = {}, 1, 0
   for index = 1, #text do
-    local char = text:sub(index, index)
-    if char == "{" then
+    local byte = text:byte(index)
+    if byte == 123 then -- {
       depth = depth + 1
-    elseif char == "}" then
+    elseif byte == 125 then -- }
       depth = depth - 1
-    elseif char == "," and depth == 0 then
+    elseif byte == 44 and depth == 0 then -- ,
       result[#result + 1], start = text:sub(start, index - 1), index + 1
     end
   end
   result[#result + 1] = text:sub(start)
+  return result
+end
+
+---Create a shallow copy of a list without crossing the Lua/Vim API bridge.
+---@generic T
+---@param list T[]
+---@return T[]
+function M.copy_list(list)
+  local result = {}
+  for index = 1, #list do
+    result[index] = list[index]
+  end
   return result
 end
 

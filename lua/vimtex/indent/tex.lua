@@ -2,6 +2,14 @@ local syntax = require "vimtex.syntax"
 
 local M = {}
 local configs = {}
+
+local function get_line(line_number)
+  if line_number < 1 then
+    return ""
+  end
+  return vim.api.nvim_buf_get_lines(0, line_number - 1, line_number, false)[1]
+    or ""
+end
 local option_group =
   vim.api.nvim_create_augroup("vimtex_indent_options", { clear = true })
 vim.api.nvim_create_autocmd("OptionSet", {
@@ -34,7 +42,7 @@ local function clean_line(line)
 end
 
 local function in_verbatim(line_number, line)
-  local column = #(line or vim.fn.getline(line_number)) - 1
+  local column = #(line or get_line(line_number)) - 1
   local stack = syntax.stack(line_number, column)
   local zone, environment = false, false
   for _, group in ipairs(stack) do
@@ -53,13 +61,13 @@ local function in_verbatim(line_number, line)
 end
 
 local function previous_line(line_number)
-  local line = vim.fn.getline(line_number)
+  local line = get_line(line_number)
   while
     line_number > 0
     and (line:find "^%s*%%" ~= nil or in_verbatim(line_number, line))
   do
     line_number = vim.fn.prevnonblank(line_number - 1)
-    line = vim.fn.getline(line_number)
+    line = get_line(line_number)
   end
   return line_number, line_number > 0 and clean_line(line) or ""
 end
@@ -124,7 +132,7 @@ local function parse_amp_context(config, context, line_number)
   local depth = 1
   line_number = vim.fn.prevnonblank(line_number - 1)
   while line_number >= 1 do
-    local line = vim.fn.getline(line_number)
+    local line = get_line(line_number)
     if matches(line, config.depth_end) then
       depth = depth + 1
     end
@@ -233,7 +241,7 @@ local function indent_items(config, line, previous, previous_number)
         return -config.sw * (matches(previous, config.item) and 1 or 0)
       end
       previous_number = vim.fn.prevnonblank(previous_number - 1)
-      previous = vim.fn.getline(previous_number)
+      previous = get_line(previous_number)
     end
   end
   return 0
@@ -321,7 +329,7 @@ function M.indent(line_number)
   if previous_number == 0 then
     return vim.fn.indent(line_number)
   end
-  local line = vim.fn.getline(line_number)
+  local line = get_line(line_number)
   if in_verbatim(line_number, line) then
     return line == "" and vim.fn.indent(previous_number)
       or vim.fn.indent(line_number)

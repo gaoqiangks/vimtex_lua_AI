@@ -1,5 +1,6 @@
 local M = {}
 local paths = require "vimtex.paths"
+local util = require "vimtex.util"
 local tex_extensions = {
   tex = true,
   latex = true,
@@ -257,7 +258,7 @@ function methods.get_sources(self, options)
   if not self.__sources or options.refresh then
     self.__sources = M.gather_sources(self.tex, self.root)
   end
-  return vim.list_slice(self.__sources)
+  return util.copy_list(self.__sources)
 end
 
 function methods.getftime(self)
