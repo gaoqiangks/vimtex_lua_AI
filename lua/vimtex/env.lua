@@ -17,6 +17,22 @@ local math_environments = {
 local completion_environment
 local repeat_action
 local repeat_tick
+local math_punctuation = {
+  ",",
+  ".",
+  ";",
+  ":",
+  "?",
+  "!",
+  "，",
+  "。",
+  "；",
+  "：",
+  "？",
+  "！",
+  "、",
+  "…",
+}
 
 ---Transform an environment name entered through cse/cs$.
 ---@param name string
@@ -126,6 +142,32 @@ local function split_line(delimiter)
     line:sub(delimiter.cnum + #delimiter.match)
 end
 
+---Remove sentence punctuation immediately following a math delimiter.
+---@param text string
+---@return string punctuation
+---@return string remainder
+local function take_leading_math_punctuation(text)
+  local index = (text:find "[^ \t]" or (#text + 1))
+  local first = index
+  while index <= #text do
+    local found
+    for _, punctuation in ipairs(math_punctuation) do
+      if text:sub(index, index + #punctuation - 1) == punctuation then
+        found = punctuation
+        break
+      end
+    end
+    if not found then
+      break
+    end
+    index = index + #found
+  end
+  if index == first then
+    return "", text
+  end
+  return text:sub(first, index - 1), text:sub(index):gsub("^[ \t]*", "")
+end
+
 function M.change_in_place(opening, closing, replacement)
   local before, after = split_line(closing)
   vim.fn.setline(closing.lnum, before .. replacement[2] .. after)
@@ -142,10 +184,13 @@ end
 
 function M.change_to_inline_math(opening, closing, replacement)
   local before, after = split_line(closing)
+  local punctuation
+  punctuation, after = take_leading_math_punctuation(after)
+  local close = punctuation .. replacement[2]
   if (before .. after):match "^%s*$" then
     vim.fn.setline(
       closing.lnum - 1,
-      (vim.fn.getline(closing.lnum - 1):gsub("%s*$", replacement[2]))
+      (vim.fn.getline(closing.lnum - 1):gsub("%s*$", close))
     )
     vim.cmd(closing.lnum .. "delete _")
     local nextline = vim.trim(vim.fn.getline(closing.lnum))
@@ -155,12 +200,12 @@ function M.change_to_inline_math(opening, closing, replacement)
   elseif before:match "^%s*$" then
     vim.fn.setline(
       closing.lnum - 1,
-      vim.fn.getline(closing.lnum - 1):gsub("%s*$", replacement[2])
+      vim.fn.getline(closing.lnum - 1):gsub("%s*$", close)
         .. after:gsub("^%s*", " ")
     )
     vim.cmd(closing.lnum .. "delete _")
   else
-    vim.fn.setline(closing.lnum, before:gsub("%s*$", replacement[2]) .. after)
+    vim.fn.setline(closing.lnum, before:gsub("%s*$", close) .. after)
   end
   before, after = split_line(opening)
   if (before .. after):match "^%s*$" then
@@ -201,11 +246,19 @@ function M.change_to_indented(opening, closing, replacement)
     old_indent = vim.fn.indent(cursor[2])
   end
   local before, after = split_line(closing)
+  local punctuation
+  punctuation, after = take_leading_math_punctuation(after)
   before, after = before:gsub("%s*$", ""), after:gsub("^%s*", "")
   if before ~= "" then
-    vim.fn.setline(closing.lnum, before)
+    vim.fn.setline(closing.lnum, before .. punctuation)
     vim.fn.append(closing.lnum, replacement[2])
   else
+    if punctuation ~= "" then
+      vim.fn.setline(
+        closing.lnum - 1,
+        vim.fn.getline(closing.lnum - 1):gsub("%s*$", punctuation)
+      )
+    end
     vim.fn.setline(closing.lnum, replacement[2])
   end
   if after ~= "" then
