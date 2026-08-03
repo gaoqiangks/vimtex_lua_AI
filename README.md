@@ -25,22 +25,46 @@ folding disabled. Two real multi-file projects were tested:
 
 | Project and benchmark | Lua implementation | Vimscript implementation | Result |
 |---|---:|---:|---:|
-| `minisurf`: open main file and finish startup | 32.7 ms | 81.6 ms | 2.5x faster |
-| `minisurf`: parse the complete included project | 28.3 ms | 183.4 ms | 6.5x faster |
-| `minisurf`: memory growth during project parsing | 6.0 MiB | 16.3 MiB | about 62% lower |
-| `minisurf`: find an environment in a 3,048-line file | 0.0081 ms/call | 0.87 ms/call | about 108x faster |
-| `minisurf`: resident memory after startup | 17.4 MiB | 16.8 MiB | 0.6 MiB higher |
-| Lecture: open main file and finish startup | 48.8 ms | 117.1 ms | 2.4x faster |
-| Lecture: parse the complete included project | 41.2 ms | 97.6 ms | 2.4x faster |
-| Lecture: memory growth during project parsing | 1.8 MiB | 4.3 MiB | about 59% lower |
-| Lecture: find an environment in a 2,597-line file | 0.0095 ms/call | 0.87 ms/call | about 92x faster |
-| Lecture: resident memory after startup | 17.4 MiB | 16.5 MiB | 0.9 MiB higher |
+| `minisurf`: startup median | 32.0 ms | 78.2 ms | 2.45x faster |
+| `minisurf`: parse the complete included project | 24.5 ms | 173.6 ms | 7.08x faster |
+| `minisurf`: memory growth during project parsing | 4.8 MiB | 15.9 MiB | about 70% lower |
+| `minisurf`: cached project parse | 1.17 ms | 49.82 ms | 42.6x faster |
+| `minisurf`: build the 1,436-entry table of contents | 470.6 ms | 1,202.7 ms | 2.56x faster |
+| `minisurf`: find an environment in a 3,048-line file | 0.0127 ms/call | 1.033 ms/call | about 81x faster |
+| `minisurf`: environment completion, first call with a warm package cache | 44.8 ms | 151.7 ms | 3.39x faster |
+| `minisurf`: environment completion, repeated call | 0.018 ms | 4.22 ms | about 236x faster |
+| `minisurf`: command completion, repeated call | 0.060 ms | 14.92 ms | about 249x faster |
+| `minisurf`: indent a 3,048-line file | 2,526.7 ms | 3,435.4 ms | 1.36x faster |
+| Lecture: startup median | 47.9 ms | 129.9 ms | 2.71x faster |
+| Lecture: parse the complete included project | 23.4 ms | 127.7 ms | 5.45x faster |
+| Lecture: memory growth during project parsing | 0.58 MiB | 4.13 MiB | about 86% lower |
+| Lecture: cached project parse | 4.20 ms | 17.65 ms | 4.21x faster |
+| Lecture: build the 259-entry table of contents | 137.8 ms | 375.1 ms | 2.72x faster |
+| Lecture: find an environment in a 2,597-line file | 0.0103 ms/call | 1.190 ms/call | about 116x faster |
+| Lecture: environment completion, first call with a warm package cache | 34.7 ms | 119.1 ms | 3.43x faster |
+| Lecture: environment completion, repeated call | 0.018 ms | 3.61 ms | about 196x faster |
+| Lecture: command completion, repeated call | 0.068 ms | 13.45 ms | about 199x faster |
+| Lecture: indent a 2,597-line file | 2,784.2 ms | 3,186.5 ms | 1.14x faster |
+| Parse a 2.2 MiB, 4,515-entry BibTeX file | 86.1 ms | 3,142.7 ms | 36.5x faster |
+| Repeated completion from that BibTeX file | 3.54 ms | 6.29 ms | 1.78x faster |
 
-Startup figures are the mean of 10 runs. Project parsing figures are the mean
-of five clean Neovim processes. Both implementations returned the same 26,593
-included lines for `minisurf` and 5,997 included lines for the lecture project.
-Surrounding-environment figures are the mean of five runs with 500 post-warm-up
-calls at nested environments in the largest representative files.
+Startup figures are the median of 10 runs. Project parsing figures are the
+mean of five clean Neovim processes. Both implementations returned the same
+26,593 included lines for `minisurf` and 5,997 included lines for the lecture
+project. They also produced the same TOC entry counts, normalized TOC content,
+BibTeX entries, and quickfix entry counts. Surrounding-environment figures use
+5,000 post-warm-up calls at nested environments in the largest representative
+files.
+Completion timings use a populated persistent package cache, as expected after
+the first completion request following installation. The first-call rows still
+start in a new Neovim process; the repeated-call rows are the mean of 500 calls
+in that process. The Lua implementation additionally caches the combined
+project candidates in memory and invalidates them on TeX edits and writes.
+
+Syntax redraw was 1.20x faster on `minisurf` and effectively tied on the
+lecture project. LaTeX log parsing was 1.05x and 1.17x faster, respectively.
+These paths are dominated by Neovim's native syntax and `errorformat`
+machinery, so they provide less opportunity for Lua-side optimization.
 
 The Lua implementation is substantially faster and uses less transient memory
 when parsing the complete project. Environment lookup uses a bounded,

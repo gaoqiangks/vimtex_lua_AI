@@ -480,7 +480,7 @@ constructors.index = function()
     title = "Alphabetical index",
     prefilter_cmds = { "printindex" },
     priority = 0,
-    re = [=[\v^\s*\\printindex\[]=],
+    re = [=[\v^\s*\\printindex\[?]=],
   }
 end
 

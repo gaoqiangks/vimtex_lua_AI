@@ -108,9 +108,10 @@ end
 
 function M.get_inner()
   local pair = M.get_surrounding "normal"
-  return vim.tbl_isempty(pair[1])
-    or pair[1].name == "document" and {}
-    or { name = pair[1].name, open = pair[1], close = pair[2] }
+  if vim.tbl_isempty(pair[1]) or pair[1].name == "document" then
+    return {}
+  end
+  return { name = pair[1].name, open = pair[1], close = pair[2] }
 end
 
 local function walk(all)
@@ -507,7 +508,7 @@ local function prompt(kind)
   local name = pair[1].name or pair[1].match
   completion_environment = name
   local input = require("vimtex.ui").input {
-    prompt = "Change surrounding environment: ",
+    prompt = "change surrounding env: " .. name .. " ",
     text = vim.g.vimtex_env_change_autofill == 1 and name or "",
     completion = "customlist,v:lua.require'vimtex.env'.input_complete",
   }

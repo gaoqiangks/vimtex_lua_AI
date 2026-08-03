@@ -13,7 +13,7 @@ silent edit main.tex
 if empty($INMAKE) | finish | endif
 
 let s:parsed = v:lua.require('vimtex.parser').toc()
-call assert_equal(len(s:parsed), 10)
+call assert_equal(len(s:parsed), 11)
 
 " Test added for #1543
 call assert_equal(s:parsed[6].type, 'include')

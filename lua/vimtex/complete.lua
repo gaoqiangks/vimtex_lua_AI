@@ -11,6 +11,11 @@ local active
 local texmf_cache = {}
 local bib_candidate_cache = {}
 local bib_candidate_order = {}
+local package_candidate_cache = {}
+local command_candidate_cache = {}
+local command_candidate_generation = 0
+local invalidation_autocmd_initialized = false
+local package_store
 
 local function cache_bib_candidates(key, value)
   if bib_candidate_cache[key] == nil then
@@ -32,6 +37,30 @@ local function copy_candidates(candidates)
     result[index] = copy
   end
   return result
+end
+
+local function invalidate_command_candidates()
+  command_candidate_generation = command_candidate_generation + 1
+  command_candidate_cache = {}
+end
+
+local function ensure_command_cache_invalidation()
+  if invalidation_autocmd_initialized then
+    return
+  end
+  invalidation_autocmd_initialized = true
+  local group = vim.api.nvim_create_augroup(
+    "vimtex_complete_command_cache",
+    { clear = true }
+  )
+  vim.api.nvim_create_autocmd(
+    { "TextChanged", "InsertLeave", "BufWritePost" },
+    {
+      group = group,
+      pattern = "*.tex",
+      callback = invalidate_command_candidates,
+    }
+  )
 end
 
 local function matches(text, regex, ignore_case)
@@ -315,37 +344,79 @@ local function parse_source(lines, package)
   return result
 end
 
+local function get_package_store()
+  if not package_store then
+    package_store = require("vimtex.cache").open("pkgcomplete_lua", {
+      default = {},
+      validate = { format = 1 },
+    })
+    package_store:read()
+  end
+  return package_store
+end
+
 local function load_package(package, kind)
+  local memory = package_candidate_cache[package]
+  if memory then
+    return memory[kind] or {}
+  end
+
   local file = complete_dir .. "/" .. package
   local lines, readable = util.readfile(file)
+  local source
+  local stat
   if readable then
-    local result = {}
+    source = file
+    stat = vim.uv.fs_stat(file)
+  else
+    source = package:match "^class%-"
+        and require("vimtex.kpsewhich").find(package:sub(7) .. ".cls")
+      or require("vimtex.kpsewhich").find(package .. ".sty")
+    stat = source ~= "" and vim.uv.fs_stat(source) or nil
+  end
+
+  local store = get_package_store()
+  local signature = stat
+      and table.concat(
+        { source, stat.size, stat.mtime.sec, stat.mtime.nsec },
+        ":"
+      )
+    or source
+  local stored = store.data[package] or {}
+  if stored.signature == signature and type(stored.candidates) == "table" then
+    package_candidate_cache[package] = stored.candidates
+    return stored.candidates[kind] or {}
+  end
+
+  local result
+  if readable then
+    result = { cmd = {}, env = {} }
     for _, line in ipairs(lines) do
-      if kind == "cmd" and line:match "^%a" then
+      if line:match "^%a" then
         local fields = vim.split(line, "%s+")
-        table.insert(result, {
+        table.insert(result.cmd, {
           word = fields[1],
           mode = ".",
           kind = "[cmd: " .. package .. "] ",
           menu = fields[2] or "",
         })
-      elseif kind == "env" then
-        local environment = line:match "^\\begin{(.-)}$"
-        if environment then
-          table.insert(result, {
-            word = environment,
-            mode = ".",
-            kind = "[env: " .. package .. "] ",
-          })
-        end
+      end
+      local environment = line:match "^\\begin{(.-)}$"
+      if environment then
+        table.insert(result.env, {
+          word = environment,
+          mode = ".",
+          kind = "[env: " .. package .. "] ",
+        })
       end
     end
-    return result
+  else
+    result = parse_source(util.readfile(source), package)
   end
-  local source = package:match "^class%-"
-      and require("vimtex.kpsewhich").find(package:sub(7) .. ".cls")
-    or require("vimtex.kpsewhich").find(package .. ".sty")
-  return parse_source(util.readfile(source), package)[kind]
+  package_candidate_cache[package] = result
+  store.data[package] = { signature = signature, candidates = result }
+  store.modified = true
+  return result[kind] or {}
 end
 
 local function document_candidates(kind)
@@ -378,11 +449,29 @@ local function document_candidates(kind)
 end
 
 local function complete_commands(regex, kind)
-  local result = document_candidates(kind)
-  for _, package in ipairs(packages()) do
-    vim.list_extend(result, load_package(package, kind))
+  ensure_command_cache_invalidation()
+  local project = require("vimtex.state").get(vim.b.vimtex_id)
+  local package_names = vim.tbl_keys(vim.b.vimtex.packages or {})
+  table.sort(package_names)
+  local signature = table.concat({
+    tostring(command_candidate_generation),
+    tostring(vim.b.vimtex.documentclass or ""),
+    table.concat(package_names, "\0"),
+  }, "\1")
+  local cache_key = project.tex .. "\0" .. kind
+  local cached = command_candidate_cache[cache_key]
+  if not cached or cached.signature ~= signature then
+    local result = document_candidates(kind)
+    for _, package in ipairs(packages()) do
+      vim.list_extend(result, load_package(package, kind))
+    end
+    if package_store and package_store.modified then
+      package_store:write()
+    end
+    cached = { signature = signature, candidates = uniq(result) }
+    command_candidate_cache[cache_key] = cached
   end
-  return filter(uniq(result), regex)
+  return copy_candidates(filter(cached.candidates, regex))
 end
 
 local function files(pattern, root, transform, kind)
@@ -658,6 +747,7 @@ function M.init_buffer()
   if vim.g.vimtex_complete_enabled == 0 then
     return
   end
+  ensure_command_cache_invalidation()
   vim.bo.omnifunc = "v:lua.require'vimtex.complete'.omnifunc"
 end
 
