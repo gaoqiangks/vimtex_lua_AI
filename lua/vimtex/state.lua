@@ -226,6 +226,24 @@ local function recursive_candidates(from_bib)
   )
 end
 
+local function existing_project_main()
+  local file = vim.fn.fnamemodify(current_file(), ":p")
+  local candidates = {}
+  for _, state in pairs(states) do
+    -- Local/subfile states are implementation details of their parent and
+    -- must not compete with the actual project when associating new buffers.
+    if
+      not state.main_id
+      and state.tex ~= ""
+      and state.tex ~= file
+      and state.has_source(file)
+    then
+      candidates[#candidates + 1] = state.tex
+    end
+  end
+  return choose(candidates)
+end
+
 local function get_main()
   if vim.b.vimtex_main and vim.fn.filereadable(vim.b.vimtex_main) == 1 then
     return vim.fn.fnamemodify(vim.b.vimtex_main, ":p"), "buffer variable", {}
@@ -243,6 +261,10 @@ local function get_main()
     if candidate ~= "" then
       return candidate, "subfiles", {}
     end
+  end
+  candidate = existing_project_main()
+  if candidate ~= "" then
+    return candidate, "existing project sources", {}
   end
   candidate = latexmain()
   if candidate ~= "" then
@@ -325,6 +347,7 @@ function M.init_local()
       main = current_file(),
       main_parser = "local file",
       preserve_root = preserve or standalone(),
+      lazy = true,
     }
     local main = states[vim.b.vimtex_id]
     main.subids = main.subids or {}
@@ -347,6 +370,18 @@ function M.toggle_main()
   end
   local_state.active = local_state.active == 1 and 0 or 1
   vim.b.vimtex_local = local_state
+  if local_state.active == 1 then
+    local state = states[local_state.sub_id]
+    if state and state.__lazy then
+      local replacement = class.new {
+        main = state.tex,
+        main_parser = "local file",
+        preserve_root = state.__lazy_preserve_root,
+      }
+      replacement.main_id = local_state.main_id
+      states[local_state.sub_id] = replacement
+    end
+  end
   local id = local_state.active == 1 and local_state.sub_id
     or local_state.main_id
   vim.b.vimtex_id, vim.b.vimtex = id, states[id]

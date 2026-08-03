@@ -12,10 +12,14 @@ if empty($INMAKE) | finish | endif
 call assert_equal(len(v:lua.require('vimtex.state').list_all()), 0)
 silent edit included.tex
 call assert_equal(len(v:lua.require('vimtex.state').list_all()), 2)
+call assert_true(v:lua.require('vimtex.state').get(b:vimtex_local.sub_id).__lazy)
+call assert_false(has_key(v:lua.require('vimtex.state').get(b:vimtex_local.sub_id), 'compiler'))
 
 " If we toggle to the included state then wipe it, we should not cleanup the
 " main state
 VimtexToggleMain
+call assert_false(get(b:vimtex, '__lazy', v:false))
+call assert_true(has_key(b:vimtex, 'compiler'))
 bwipeout
 call assert_equal(len(v:lua.require('vimtex.state').list_all()), 1)
 

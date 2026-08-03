@@ -257,8 +257,23 @@ function methods.get_sources(self, options)
   options = vim.tbl_extend("force", { refresh = false }, options or {})
   if not self.__sources or options.refresh then
     self.__sources = M.gather_sources(self.tex, self.root)
+    self.__source_set = nil
   end
   return util.copy_list(self.__sources)
+end
+
+function methods.has_source(self, file)
+  if not self.__sources then
+    self.__sources = M.gather_sources(self.tex, self.root)
+  end
+  if not self.__source_set then
+    self.__source_set = {}
+    for _, source in ipairs(self.__sources) do
+      local absolute = vim.fn.fnamemodify(paths.join(self.root, source), ":p")
+      self.__source_set[absolute] = true
+    end
+  end
+  return self.__source_set[vim.fn.fnamemodify(file, ":p")] == true
 end
 
 function methods.getftime(self)
@@ -341,6 +356,15 @@ function M.new(options)
       end
       return method(self, ...)
     end
+  end
+  -- Included buffers normally use the main project state.  Keep their local
+  -- state lightweight until VimtexToggleMain actually activates it; eagerly
+  -- parsing every included file and initializing a compiler/viewer is costly
+  -- when a session restores many buffers at once.
+  if opts.lazy then
+    self.__lazy = true
+    self.__lazy_preserve_root = opts.preserve_root
+    return self
   end
   local preamble = opts.preamble
     or (
