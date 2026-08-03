@@ -465,17 +465,12 @@ function M.is_inside(environment)
   local start, finish =
     [[\\begin\s*{]] .. environment .. [[\*\?}]],
     [[\\end\s*{]] .. environment .. [[\*\?}]]
+  local stopline = math.max(vim.fn.line "." - 500, 1)
   local ok, result =
-    pcall(vim.fn.searchpairpos, start, "", finish, "bnW", "", 0, 100)
-  return ok and result
-    or vim.fn.searchpairpos(
-      start,
-      "",
-      finish,
-      "bnW",
-      "",
-      math.max(vim.fn.line "." - 500, 1)
-    )
+    pcall(vim.fn.searchpairpos, start, "", finish, "bnW", "", stopline, 100)
+  -- A failed bounded search must stay failed.  Retrying without a timeout
+  -- allows pathological patterns or syntax state to lock the editor.
+  return ok and type(result) == "table" and result or { 0, 0 }
 end
 
 function M.input_complete(lead)
@@ -504,6 +499,9 @@ end
 local function prompt(kind)
   local pair = M.get_surrounding(kind)
   if vim.tbl_isempty(pair[1]) then
+    if kind == "normal" then
+      require("vimtex.log").info "No surrounding environment found"
+    end
     return
   end
   local name = pair[1].name or pair[1].match

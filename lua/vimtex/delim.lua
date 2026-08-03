@@ -229,6 +229,10 @@ local function bounds(is_open)
 end
 
 local function search_pair(delimiter, skip)
+  local limit = tonumber(timeout()) or 300
+  if limit <= 0 then
+    limit = 300
+  end
   local ok, found = pcall(
     vim.fn.searchpairpos,
     delimiter.re.open,
@@ -236,20 +240,15 @@ local function search_pair(delimiter, skip)
     delimiter.re.close,
     delimiter.gms_flags,
     skip or "",
-    0,
-    timeout()
+    delimiter.gms_stopline or 0,
+    limit
   )
-  if ok then
+  if ok and type(found) == "table" then
     return found
   end
-  return vim.fn.searchpairpos(
-    delimiter.re.open,
-    "",
-    delimiter.re.close,
-    delimiter.gms_flags,
-    skip or "",
-    delimiter.gms_stopline
-  )
+  -- Never retry without a timeout.  The old compatibility fallback could
+  -- turn a recoverable regex error into an unbounded CPU loop.
+  return { 0, 0 }
 end
 
 local function matching_simple(delimiter, pair, skip)
@@ -425,6 +424,7 @@ end
 function M._get(opts)
   local saved, regex = pos.get_cursor(), M.re[opts.type][opts.side]
   local line, column
+  local last_excluded_value
   while true do
     local flags = opts.direction == "next" and "cnW" or "bcnW"
     local stop = opts.direction == "next"
@@ -443,7 +443,21 @@ function M._get(opts)
       opts.syn_exclude
       and require("vimtex.syntax").in_group(opts.syn_exclude, line, column)
     then
+      -- searchpos() with the `c` flag may keep returning the current match.
+      -- At the start of the buffer there is no earlier cursor position, so an
+      -- excluded delimiter at (1, 1) would otherwise make this loop spin
+      -- forever and continuously allocate temporary Lua objects.
+      local found_value = pos.val(line, column)
+      if found_value == last_excluded_value then
+        line, column = 0, 0
+        break
+      end
+      last_excluded_value = found_value
       pos.set_cursor(pos.prev(line, column))
+      if pos.val(pos.get_cursor()) >= found_value then
+        line, column = 0, 0
+        break
+      end
     else
       break
     end
@@ -591,7 +605,103 @@ local function allowed(opening, opts)
     or vim.tbl_contains(whitelist, ((opening.name or ""):gsub("%*$", "")))
 end
 
+local function tex_content_end(line)
+  local start = 1
+  while true do
+    local index = line:find("%", start, true)
+    if not index then
+      return #line
+    end
+    local slashes, cursor = 0, index - 1
+    while cursor > 0 and line:sub(cursor, cursor) == "\\" do
+      slashes, cursor = slashes + 1, cursor - 1
+    end
+    if slashes % 2 == 0 then
+      return index - 1
+    end
+    start = index + 1
+  end
+end
+
+local function environment_token(line, lnum, start, command, name)
+  local match = line:sub(start):match("^\\" .. command .. "%s*{[^}]*}")
+  local raw_name = name or ""
+  local starred = raw_name:sub(-1) == "*"
+  return {
+    _parser = "environment",
+    type = "env",
+    side = command == "begin" and "open" or "close",
+    is_open = command == "begin",
+    lnum = lnum,
+    cnum = start,
+    match = match or "",
+    name = starred and raw_name:sub(1, -2) or raw_name,
+    starred = starred,
+    corr = (match or ""):gsub(command, command == "begin" and "end" or "begin", 1),
+    re = {
+      this = command == "begin" and M.re.env_tex.open or M.re.env_tex.close,
+      corr = command == "begin" and M.re.env_tex.close or M.re.env_tex.open,
+      open = M.re.env_tex.open,
+      close = M.re.env_tex.close,
+    },
+  }
+end
+
+-- Find a surrounding TeX environment with one bounded pass over the buffer.
+-- This avoids searchpairpos(), whose interaction with syntax state can become
+-- pathologically slow even in a small document.
+local function surrounding_tex_environment(opts)
+  local cursor = pos.val(pos.get_cursor())
+  local stack, pairs = {}, {}
+  for lnum, line in ipairs(vim.api.nvim_buf_get_lines(0, 0, -1, false)) do
+    local limit, start = tex_content_end(line), 1
+    while start <= limit do
+      local begin_at, begin_end, begin_name = line:find("\\begin%s*{([^}]*)}", start)
+      local end_at, end_end, end_name = line:find("\\end%s*{([^}]*)}", start)
+      local at, finish, command, name
+      if begin_at and begin_at <= limit and (not end_at or begin_at < end_at) then
+        at, finish, command, name = begin_at, begin_end, "begin", begin_name
+      elseif end_at and end_at <= limit then
+        at, finish, command, name = end_at, end_end, "end", end_name
+      else
+        break
+      end
+      local token = environment_token(line, lnum, at, command, name)
+      if command == "begin" then
+        stack[#stack + 1] = token
+      else
+        for index = #stack, 1, -1 do
+          local opening = stack[index]
+          if opening.name == token.name and opening.starred == token.starred then
+            table.remove(stack, index)
+            pairs[#pairs + 1] = { opening, token }
+            break
+          end
+        end
+      end
+      start = finish + 1
+    end
+  end
+  local best
+  for _, pair in ipairs(pairs) do
+    local opening, closing = pair[1], pair[2]
+    if
+      opening.name ~= "document"
+      and allowed(opening, opts)
+      and pos.val(opening) <= cursor
+      and pos.val(closing) + #closing.match - 1 >= cursor
+      and (not best or pos.val(opening) > pos.val(best[1]))
+    then
+      best = pair
+    end
+  end
+  return best or { {}, {} }
+end
+
 local function surrounding_environment(kind, opts)
+  if kind == "env_tex" then
+    return surrounding_tex_environment(opts)
+  end
   local saved = pos.get_cursor()
   local cursor_value = pos.val(saved)
   local last, opening_value = cursor_value, cursor_value - 1
@@ -602,6 +712,13 @@ local function surrounding_environment(kind, opts)
     end
     local opening = M.get_prev(kind, "open")
     if vim.tbl_isempty(opening) then
+      break
+    end
+    -- `document` is only a file boundary, not an editable surrounding
+    -- environment.  Once a backward search reaches it, no earlier
+    -- environment can surround the cursor, so avoid the comparatively
+    -- expensive search for the matching `\end{document}`.
+    if kind == "env_tex" and opening.name == "document" then
       break
     end
     if allowed(opening, opts) then
