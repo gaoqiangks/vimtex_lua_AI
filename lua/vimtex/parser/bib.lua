@@ -6,6 +6,7 @@
 
 local pc = require "vimtex.parser.combinators"
 local g = require "vimtex.parser.general"
+local util = require "vimtex.util"
 
 ---@class BibReference
 ---@field type string
@@ -165,9 +166,9 @@ local function parse_with_bibtex(filename)
     vim.fn.delete(directory, "rf")
     return {}
   end
-  local text = table.concat(vim.fn.readfile(bbl), "\n")
+  local text = table.concat(util.readfile(bbl), "\n")
   text = vim.fn.substitute(text, [[\n\n\@!\(\s\=\)\s*\|{\|}]], [[\1]], "g")
-  text = require("vimtex.util").tex2unicode(text)
+  text = util.tex2unicode(text)
   local result = {}
   for _, line in ipairs(vim.split(text, "\n")) do
     local fields = vim.split(line, "||", { plain = true })
@@ -433,6 +434,8 @@ function M.parse_cheap(start_line, end_line, opts)
   return entries
 end
 
+local parse_cache = {}
+
 ---Parse the specified bibtex file
 ---The parser adheres to the format description found here:
 ---http://www.bibtex.org/Format/
@@ -444,16 +447,26 @@ function M.parse(filename, opts)
   if not vim.tbl_contains({ "lua", "vim", "bibtex", "bibparse" }, backend) then
     return {}
   end
-  if backend == "bibtex" then
-    return parse_with_bibtex(filename)
-  end
-  if not vim.fn.filereadable(filename) then
+  local stat = vim.uv.fs_stat(filename)
+  if not stat or stat.type ~= "file" then
     return {}
   end
+  local cache_key = filename .. "\0" .. backend
+  local signature = stat.size .. ":" .. stat.mtime.sec .. ":" .. stat.mtime.nsec
+  local cached = parse_cache[cache_key]
+  if cached and cached.signature == signature then
+    return vim.deepcopy(cached.entries)
+  end
+  if backend == "bibtex" then
+    local result = parse_with_bibtex(filename)
+    parse_cache[cache_key] = {
+      signature = signature,
+      entries = vim.deepcopy(result),
+    }
+    return result
+  end
 
-  local f = assert(io.open(filename, "r"))
-  local lines = vim.split(f:read "*a", "\n")
-  f:close()
+  local lines = util.readfile(filename)
 
   local items = {}
   local strings = {}
@@ -484,6 +497,10 @@ function M.parse(filename, opts)
   for _, x in ipairs(items) do
     table.insert(result, parse_item(x, strings))
   end
+  parse_cache[cache_key] = {
+    signature = signature,
+    entries = vim.deepcopy(result),
+  }
   return result
 end
 

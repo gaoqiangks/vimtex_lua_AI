@@ -30,5 +30,7 @@ let s:packages = {
       \ 'package': {'key': ''}
       \ }
 call assert_equal(s:packages, b:vimtex.packages)
+call assert_equal('article', b:vimtex.documentclass)
+call assert_equal({'title': '{value}', 'draft': v:true}, b:vimtex.documentclass_options)
 
 call v:lua.require('vimtex.test').finished()

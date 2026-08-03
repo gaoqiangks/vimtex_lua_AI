@@ -148,7 +148,8 @@ function M.get_prev()
   return get "prev"
 end
 function M.get_current()
-  local saved, cursor_value = pos.get_cursor(), pos.val(pos.get_cursor())
+  local saved = pos.get_cursor()
+  local cursor_value = pos.val(saved)
   for _ = 1, 3 do
     local command = get "prev"
     if vim.tbl_isempty(command) then

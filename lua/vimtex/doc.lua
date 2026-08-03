@@ -1,4 +1,5 @@
 local M = {}
+local util = require "vimtex.util"
 local complete_dir = vim.fn.fnamemodify(
   debug.getinfo(1, "S").source:sub(2),
   ":h:h:h:h"
@@ -11,10 +12,12 @@ local function command_context(name)
   packages = vim.tbl_filter(function(package)
     return vim.fn.filereadable(complete_dir .. package) == 1
   end, packages)
-  local queue = vim.deepcopy(packages)
-  while #queue > 0 do
-    local package = table.remove(queue, 1)
-    for _, line in ipairs(vim.fn.readfile(complete_dir .. package)) do
+  local queue = vim.list_slice(packages)
+  local index = 1
+  while index <= #queue do
+    local package = queue[index]
+    index = index + 1
+    for _, line in ipairs(util.readfile(complete_dir .. package)) do
       local include = line:match "^#%s*include:%s*(.-)%s*$"
       if
         include
@@ -28,7 +31,7 @@ local function command_context(name)
   end
   local candidates = {}
   for _, package in ipairs(packages) do
-    if vim.tbl_contains(vim.fn.readfile(complete_dir .. package), name) then
+    if vim.tbl_contains(util.readfile(complete_dir .. package), name) then
       if package == "default" then
         vim.list_extend(candidates, { "latex2e", "lshort" })
       else

@@ -8,7 +8,7 @@ local next_id = 0
 local subfile_preserve_root = false
 
 local function current_file()
-  return vim.fn.expand "%:p"
+  return vim.api.nvim_buf_get_name(0)
 end
 
 local function get_main_id(main)
@@ -41,26 +41,23 @@ local function globpath_upwards(expression, start)
 end
 
 local function file_is_main(file)
-  if vim.fn.filereadable(file) == 0 then
-    return false
-  end
   local preamble = require("vimtex.parser").preamble(file, {
     root = vim.fn.fnamemodify(file, ":p:h"),
   })
   local has_class, has_document = false, false
   for _, line in ipairs(preamble) do
     if
-      vim.fn.match(line, [=[^\s*\\documentclass\_\s*[\[{]]=]) >= 0
+      line:find "^%s*\\documentclass%s*[%[{]"
       and not line:find("{subfiles}", 1, true)
       and not line:find("{standalone}", 1, true)
     then
       has_class = true
     end
-    if vim.fn.match(line, [[^\s*\\begin\s*{document}]]) >= 0 then
+    if line:find "^%s*\\begin%s*{document}" then
       has_document = true
     end
   end
-  return has_class and has_document
+  return has_class and has_document, preamble
 end
 
 local function choose(candidates)
@@ -119,8 +116,7 @@ end
 
 local function get_subfile()
   for _, line in ipairs(vim.api.nvim_buf_get_lines(0, 0, 20, false)) do
-    local filename =
-      vim.fn.matchstr(line, [[^\C\s*\\documentclass\[\zs.*\ze\]{subfiles}]])
+    local filename = line:match "^%s*\\documentclass%[([^]]*)%]{subfiles}" or ""
     if filename ~= "" then
       if not filename:match "%.tex$" then
         filename = filename .. ".tex"
@@ -193,7 +189,7 @@ local function recurse_main(file, tried, input_regex)
     ipairs(globpath_upwards("*.tex", vim.fn.fnamemodify(file, ":p:h")))
   do
     if not tried[candidate] then
-      for _, line in ipairs(vim.fn.readfile(candidate)) do
+      for _, line in ipairs(util.readfile(candidate)) do
         if
           line:find(basename, 1, true)
           and vim.fn.match(line, input_regex) >= 0
@@ -227,8 +223,9 @@ local function get_main()
     return candidate, "texroot specifier", {}
   end
   if vim.bo.filetype == "tex" then
-    if file_is_main(current_file()) then
-      return current_file(), "current file verified", {}
+    local is_main, preamble = file_is_main(current_file())
+    if is_main then
+      return current_file(), "current file verified", {}, preamble
     end
     candidate = get_subfile()
     if candidate ~= "" then
@@ -271,7 +268,7 @@ local function get_main()
 end
 
 function M.init()
-  local main, parser, unsupported = get_main()
+  local main, parser, unsupported, preamble = get_main()
   local id = get_main_id(main)
   if id < 0 then
     id = next_id
@@ -280,6 +277,7 @@ function M.init()
       main = main,
       main_parser = parser,
       unsupported_modules = unsupported,
+      preamble = preamble,
     }
   end
   vim.b.vimtex_id, vim.b.vimtex = id, states[id]
@@ -288,8 +286,8 @@ end
 local function standalone()
   for _, line in ipairs(vim.api.nvim_buf_get_lines(0, 0, 20, false)) do
     if
-      vim.fn.match(line, [[\v^\C\s*\\documentclass%(\[.*\])?\{standalone\}]])
-      >= 0
+      line:find "^%s*\\documentclass%b[]{standalone}"
+      or line:find "^%s*\\documentclass{standalone}"
     then
       return true
     end

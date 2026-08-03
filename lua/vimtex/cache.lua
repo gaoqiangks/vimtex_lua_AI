@@ -4,6 +4,7 @@ local M = {}
 
 local version = "cache_v2"
 local caches = {}
+local initialized_directories = {}
 
 local Cache = {}
 Cache.__index = Cache
@@ -152,11 +153,10 @@ local function create(path, opts)
   for name, method in pairs(Cache) do
     if type(method) == "function" then
       cache[name] = function(...)
-        local arguments = { ... }
-        if arguments[1] == cache then
-          table.remove(arguments, 1)
+        if select(1, ...) == cache then
+          return method(cache, select(2, ...))
         end
-        return method(cache, unpack(arguments))
+        return method(cache, ...)
       end
     end
   end
@@ -171,7 +171,10 @@ end
 
 function M.path(name)
   local directory = root()
-  vim.fn.mkdir(directory, "p")
+  if not initialized_directories[directory] then
+    vim.fn.mkdir(directory, "p")
+    initialized_directories[directory] = true
+  end
   return paths.join(directory, name)
 end
 

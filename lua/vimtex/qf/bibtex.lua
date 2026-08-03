@@ -1,4 +1,5 @@
 local M = {}
+local util = require "vimtex.util"
 
 local errorformat = {
   "%+EName%.%#has a comma at the end%.%#",
@@ -12,7 +13,7 @@ local errorformat = {
 
 local function database_files(file, out_dir)
   local result = {}
-  for _, line in ipairs(vim.fn.readfile(file)) do
+  for _, line in ipairs(util.readfile(file)) do
     if line:match "Database file #%d:" then
       local name = vim.fn.matchstr(line, [[: \zs.*]])
       if vim.fn.filereadable(name) == 1 then
@@ -27,7 +28,7 @@ end
 
 local function key_location(key, files)
   for _, file in ipairs(files) do
-    for line_number, line in ipairs(vim.fn.readfile(file)) do
+    for line_number, line in ipairs(util.readfile(file)) do
       if vim.fn.match(line, [[^\s*@\w*{\s*\V]] .. key) >= 0 then
         return file, line_number
       end

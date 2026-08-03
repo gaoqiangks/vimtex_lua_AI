@@ -7,6 +7,7 @@ local fls = require "vimtex.parser.fls"
 local paths = require "vimtex.paths"
 local tex = require "vimtex.parser.tex"
 local toc = require "vimtex.parser.toc"
+local util = require "vimtex.util"
 
 M.tex = tex.parse
 M.preamble = tex.parse_preamble
@@ -37,12 +38,12 @@ function M.get_externalfiles()
   end
   local result = {}
   for _, line in ipairs(tex.parse_preamble(state.tex)) do
-    if vim.fn.match(line, [[\\externaldocument]]) >= 0 then
-      local name = vim.fn.matchstr(line, [[{\zs[^}]*\ze}]])
+    if line:find("\\externaldocument", 1, true) then
+      local name = line:match "{([^}]*)}" or ""
       result[#result + 1] = {
         tex = name .. ".tex",
         aux = name .. ".aux",
-        opt = vim.fn.matchstr(line, [=[\[\zs[^]]*\ze\]]=]),
+        opt = line:match "%[([^]]*)%]" or "",
       }
     end
   end
@@ -71,9 +72,9 @@ function M.selection_to_texfile(opts)
   )
   local first, last = 1, #lines
   for index, line in ipairs(lines) do
-    if vim.fn.match(line, [[\\begin\s*{document}]]) >= 0 then
+    if line:find "\\begin%s*{document}" then
       first = index + 1
-    elseif vim.fn.match(line, [[\\end\s*{document}]]) >= 0 then
+    elseif line:find "\\end%s*{document}" then
       last = index - 1
       break
     end
@@ -91,8 +92,9 @@ function M.selection_to_texfile(opts)
     vim.fn.expand "%:r" .. "-" .. opts.template_name,
     opts.template_name,
   } do
-    if vim.fn.filereadable(filename) == 1 then
-      template = vim.fn.readfile(filename)
+    local lines, readable = util.readfile(filename)
+    if readable then
+      template = lines
       break
     end
   end

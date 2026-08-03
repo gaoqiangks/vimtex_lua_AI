@@ -4,14 +4,13 @@ local paths = require "vimtex.paths"
 local util = require "vimtex.util"
 
 local function bind(self)
-  for name, callback in pairs(vim.deepcopy(self)) do
+  for name, callback in pairs(self) do
     if type(callback) == "function" then
       self[name] = function(...)
-        local arguments = { ... }
-        if arguments[1] == self then
-          table.remove(arguments, 1)
+        if select(1, ...) == self then
+          return callback(self, select(2, ...))
         end
-        return callback(self, unpack(arguments))
+        return callback(self, ...)
       end
     end
   end
@@ -88,6 +87,16 @@ function base.get_file(self, extension)
     end
   end
   return ""
+end
+
+function base.read_file(self, extension)
+  for _, file in ipairs(self:_get_file_candidates(extension)) do
+    local lines, readable = util.readfile(file)
+    if readable then
+      return lines, file
+    end
+  end
+  return {}, ""
 end
 
 function base.get_output_signature(self, extension)
@@ -282,14 +291,47 @@ function base.__pprint(self)
   }
 end
 
-local function rc_opt(root, option, kind, default)
-  local patterns = {
-    [0] = [=[^\s*\$%s\s*=\s*['"]\(.\+\)['"]]=],
-    [1] = [=[^\s*\$%s\s*=\s*\(\d\+\)]=],
-    [2] = [=[^\s*@%s\s*=\s*(\(.*\))]=],
-  }
-  if not patterns[kind] then
-    error "VimTeX: Argument error"
+local rc_file_cache = {}
+
+local function read_rc_file(path)
+  local stat = vim.uv.fs_stat(path)
+  if not stat or stat.type ~= "file" then
+    return
+  end
+  local mtime = stat.mtime.sec .. ":" .. stat.mtime.nsec
+  local cached = rc_file_cache[path]
+  if cached and cached.mtime == mtime and cached.size == stat.size then
+    return cached.lines
+  end
+  local lines = util.readfile(path)
+  rc_file_cache[path] = { mtime = mtime, size = stat.size, lines = lines }
+  return lines
+end
+
+local rc_patterns = {
+  [0] = [=[^\s*\$%s\s*=\s*['"]\(.\+\)['"]]=],
+  [1] = [=[^\s*\$%s\s*=\s*\(\d\+\)]=],
+  [2] = [=[^\s*@%s\s*=\s*(\(.*\))]=],
+}
+
+local function parse_rc_value(value, kind)
+  if kind == 1 then
+    return tonumber(value)
+  elseif kind == 2 then
+    return vim.tbl_map(function(entry)
+      return vim.trim(entry):gsub("^'", ""):gsub("'$", "")
+    end, vim.split(value, ","))
+  end
+  return value
+end
+
+local function rc_opts(root, specs)
+  local results, unresolved = {}, #specs
+  for index, spec in ipairs(specs) do
+    if not rc_patterns[spec.kind] then
+      error "VimTeX: Argument error"
+    end
+    results[index] = { spec.default, -1 }
   end
   local config = vim.env.XDG_CONFIG_HOME ~= "" and vim.env.XDG_CONFIG_HOME
     or vim.fn.expand "~/.config"
@@ -300,25 +342,35 @@ local function rc_opt(root, option, kind, default)
     { config .. "/latexmk/latexmkrc", 0 },
   }
   for _, item in ipairs(files) do
-    if vim.fn.filereadable(item[1]) == 1 then
-      for _, line in ipairs(vim.fn.readfile(item[1])) do
-        local found = vim.fn.matchlist(line, patterns[kind]:format(option))
-        if #found > 1 then
-          local value = found[2]
-          if kind == 1 then
-            value = tonumber(value)
+    local lines = read_rc_file(item[1])
+    if lines then
+      for _, line in ipairs(lines) do
+        for index, spec in ipairs(specs) do
+          if results[index][2] == -1 then
+            local found =
+              vim.fn.matchlist(line, rc_patterns[spec.kind]:format(spec.option))
+            if #found > 1 then
+              results[index] = {
+                parse_rc_value(found[2], spec.kind),
+                item[2],
+              }
+              unresolved = unresolved - 1
+            end
           end
-          if kind == 2 then
-            value = vim.tbl_map(function(entry)
-              return vim.trim(entry):gsub("^'", ""):gsub("'$", "")
-            end, vim.split(value, ","))
-          end
-          return { value, item[2] }
+        end
+        if unresolved == 0 then
+          return results
         end
       end
     end
   end
-  return { default, -1 }
+  return results
+end
+
+local function rc_opt(root, option, kind, default)
+  return rc_opts(root, {
+    { option = option, kind = kind, default = default },
+  })[1]
 end
 
 M.latexmk = { get_rc_opt = rc_opt }
@@ -479,8 +531,13 @@ local function new(method, options)
     self.out_dir = vim.env.VIMTEX_OUTPUT_DIRECTORY
   end
   if method == "latexmk" then
-    for _, name in ipairs { "out_dir", "aux_dir" } do
-      local value = rc_opt(self.file_info.root, name, 0, "")[1]
+    local names = { "out_dir", "aux_dir" }
+    local values = rc_opts(self.file_info.root, {
+      { option = names[1], kind = 0, default = "" },
+      { option = names[2], kind = 0, default = "" },
+    })
+    for index, name in ipairs(names) do
+      local value = values[index][1]
       if value ~= "" then
         self[name] = value
       end

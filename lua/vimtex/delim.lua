@@ -167,7 +167,29 @@ local function initialize()
       group[side] = [[\m]] .. group[side]
     end
   end
-  M.lists, M.re = lists, re
+
+  -- These lookups sit on hot paths for motions, text objects, and delimiter
+  -- toggling. Build them once instead of scanning the configured lists for
+  -- every delimiter encountered.
+  local lookup = {}
+  for kind, list in pairs(lists) do
+    if list.name and list.re then
+      local item = { corr = {}, re = { {}, {} } }
+      for index, pair in ipairs(list.name) do
+        if item.corr[pair[1]] == nil then
+          item.corr[pair[1]] = pair[2]
+        end
+        if item.corr[pair[2]] == nil then
+          item.corr[pair[2]] = pair[1]
+        end
+        item.re[1][pair[1]] = list.re[index][1]
+        item.re[2][pair[2]] = list.re[index][2]
+      end
+      lookup[kind] = item
+    end
+  end
+
+  M.lists, M.re, M.lookup = lists, re, lookup
   vim.g["vimtex#delim#lists"], vim.g["vimtex#delim#re"] = lists, re
 end
 
@@ -185,23 +207,13 @@ local function re_for(delimiter, side, kind)
   if delimiter == "." then
     return M.re.delim_math[side == 1 and "open" or "close"]
   end
-  for index, pair in ipairs(M.lists[kind].name) do
-    if pair[side + 1] == delimiter then
-      return M.lists[kind].re[index][side + 1]
-    end
-  end
-  return ""
+  local lookup = M.lookup[kind]
+  return lookup and lookup.re[side + 1][delimiter] or ""
 end
 
 local function corresponding(delimiter, kind)
-  for _, pair in ipairs(M.lists[kind or "delim_all"].name) do
-    if delimiter == pair[1] then
-      return pair[2]
-    end
-    if delimiter == pair[2] then
-      return pair[1]
-    end
-  end
+  local lookup = M.lookup[kind or "delim_all"]
+  return lookup and lookup.corr[delimiter]
 end
 
 local function bounds(is_open)
@@ -575,7 +587,8 @@ local function allowed(opening, opts)
 end
 
 local function surrounding_environment(kind, opts)
-  local saved, cursor_value = pos.get_cursor(), pos.val(pos.get_cursor())
+  local saved = pos.get_cursor()
+  local cursor_value = pos.val(saved)
   local last, opening_value = cursor_value, cursor_value - 1
   local maximum = kind == "env_math" and 3 or 100
   for _ = 1, maximum do
@@ -602,7 +615,8 @@ local function surrounding_environment(kind, opts)
 end
 
 local function surrounding_delimiter(kind)
-  local saved, cursor_value = pos.get_cursor(), pos.val(pos.get_cursor())
+  local saved = pos.get_cursor()
+  local cursor_value = pos.val(saved)
   local last, current = cursor_value, cursor_value - 1
   for _ = 1, 100 do
     if current >= last then

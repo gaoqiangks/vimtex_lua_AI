@@ -27,25 +27,37 @@ local function options(opts)
 end
 
 function M.find_closing(start, text, count, delimiter)
-  local pattern = delimiter == "{" and [[{\|}]] or [=[\[\|\]]=]
   local opening = delimiter == "{" and "{" or "["
-  local index = start - 1
-  while count > 0 do
-    index = vim.fn.match(text, pattern, index + 1)
-    if index < 0 then
-      break
+  local closing = delimiter == "{" and "}" or "]"
+  -- `start` and the return value use Vim's zero-based byte offsets. Lua's
+  -- byte indexing makes a direct scan substantially cheaper than repeatedly
+  -- crossing into Vim's regex engine for single-character delimiters.
+  for index = start + 1, #text do
+    local char = text:sub(index, index)
+    if char == opening then
+      count = count + 1
+    elseif char == closing then
+      count = count - 1
+      if count == 0 then
+        return index - 1, 0
+      end
     end
-    count = count + (vim.fn.strpart(text, index, 1) == opening and 1 or -1)
   end
-  return index, count
+  return -1, count
 end
 
 local function input_to_filename(input, root)
-  local start = vim.fn.match(input, "{") + 1
+  local opening = input:find("{", 1, true)
+  if not opening then
+    return ""
+  end
+  local start = opening
   local finish = M.find_closing(start, input, 1, "{")
-  local file = vim.fn.strpart(input, start, finish - start)
-  file = vim.fn.substitute(file, [[^\(\s\|"\)*]], "", "")
-  file = vim.fn.substitute(file, [[\(\s\|"\)*$]], "", "")
+  if finish < 0 then
+    return ""
+  end
+  local file = input:sub(start + 1, finish)
+  file = file:gsub('^[%s"]*', ""):gsub('[%s"]*$', "")
   if vim.fn.fnamemodify(file, ":e") == "" then
     file = file .. ".tex"
   end
@@ -61,42 +73,45 @@ local function input_to_filename(input, root)
 end
 
 function M.texorpdfstring(title)
-  local first = vim.fn.match(title, [[\\texorpdfstring]])
-  if first < 0 then
+  local found = title:find("\\texorpdfstring", 1, true)
+  if not found then
     return title
   end
-  local open_tex = vim.fn.match(title, "{", first + 1)
-  if open_tex < 0 then
+  local first = found - 1
+  local open_found = title:find("{", found + 1, true)
+  if not open_found then
     return title
   end
+  local open_tex = open_found - 1
   local close_tex = M.find_closing(open_tex + 1, title, 1, "{")
   if close_tex < 0 then
     return title
   end
-  local open_pdf = vim.fn.match(title, "{", close_tex + 1)
-  if open_pdf < 0 then
+  local pdf_found = title:find("{", close_tex + 2, true)
+  if not pdf_found then
     return title
   end
+  local open_pdf = pdf_found - 1
   local close_pdf = M.find_closing(open_pdf + 1, title, 1, "{")
-  return vim.fn.strpart(title, 0, first)
-    .. vim.fn.strpart(title, open_tex + 1, close_tex - open_tex - 1)
-    .. M.texorpdfstring(vim.fn.strpart(title, close_pdf + 1))
+  if close_pdf < 0 then
+    return title
+  end
+  return title:sub(1, first)
+    .. title:sub(open_tex + 2, close_tex)
+    .. M.texorpdfstring(title:sub(close_pdf + 2))
 end
 
 function M.input_parser(line, current_file, root)
   local result = { file = "", new_root = root }
-  local file = vim.fn.substitute(line, [[\\space\s*]], " ", "g")
+  local file = line:gsub("\\space%s*", " ")
   if matches(file, vim.g["vimtex#re#tex_input_import"]) then
-    local current_root = matches(file, [[\\sub]])
+    local current_root = file:find("\\sub", 1, true)
         and vim.fn.fnamemodify(current_file, ":p:h")
       or root
-    local joined = vim.fn.substitute(file, [[\/\?}\s*{]], [[\/]], "g")
+    local joined = file:gsub("/?}%s*{", "/")
     local candidate = input_to_filename(joined, current_root)
     result.file = candidate ~= "" and candidate
-      or input_to_filename(
-        vim.fn.substitute(file, [[{.{-}}]], "", ""),
-        current_root
-      )
+      or input_to_filename(file:gsub("{.-}", "", 1), current_root)
     result.new_root = vim.fn.fnamemodify(result.file, ":p:h")
   else
     result.file = input_to_filename(file, root)
@@ -108,10 +123,7 @@ local function parse_current(file, root, current)
   current.lines, current.includes = {}, {}
   local input_pattern = vim.g["vimtex#re#tex_input"]
     .. [[|^\s*\\loadglsentries]]
-  if vim.fn.filereadable(file) == 0 then
-    return
-  end
-  for line_number, line in ipairs(vim.fn.readfile(file)) do
+  for line_number, line in ipairs(util.readfile(file)) do
     current.lines[#current.lines + 1] = { file, line_number, line }
     if line:find("\\", 1, true) and matches(line, input_pattern) then
       local result = M.input_parser(line, file, root)
@@ -158,7 +170,7 @@ local function parse_files_recursive(file, root, store)
     current.ftime = file_time
     parse_current(file, root, current)
   end
-  if vim.fn.filereadable(file) == 0 then
+  if file_time < 0 then
     return {}
   end
   local files = { file }
@@ -200,13 +212,14 @@ function M.parse_files(file, opts)
 end
 
 local function parse_preamble_recursive(file, root, parsed_files)
-  if vim.fn.filereadable(file) == 0 or parsed_files[file] then
+  if parsed_files[file] then
     return {}
   end
   parsed_files[file] = true
   local lines = {}
-  for _, line in ipairs(vim.fn.readfile(file)) do
-    if matches(line, vim.g["vimtex#re#tex_input"]) then
+  for _, line in ipairs(util.readfile(file)) do
+    local has_command = line:find("\\", 1, true) ~= nil
+    if has_command and matches(line, vim.g["vimtex#re#tex_input"]) then
       local result = M.input_parser(line, file, root)
       vim.list_extend(
         lines,
@@ -215,7 +228,7 @@ local function parse_preamble_recursive(file, root, parsed_files)
     else
       lines[#lines + 1] = line
     end
-    if matches(line, [[\\begin\s*{document}]]) then
+    if has_command and line:find "\\begin%s*{document}" then
       break
     end
   end
@@ -234,7 +247,7 @@ function M.parse_preamble(file, opts)
     current.time = timestamp
     current.lines = parse_preamble_recursive(file, opts.root, {})
   end
-  return vim.deepcopy(current.lines or {})
+  return vim.list_slice(current.lines or {})
 end
 
 return M

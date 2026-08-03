@@ -157,14 +157,13 @@ local function make(method, state)
     instance.cmd_start = command
     instance.job = jobs.start(command, { detached = true })
   end
-  for name, callback in pairs(vim.deepcopy(self)) do
+  for name, callback in pairs(self) do
     if type(callback) == "function" then
       self[name] = function(...)
-        local arguments = { ... }
-        if arguments[1] == self then
-          table.remove(arguments, 1)
+        if select(1, ...) == self then
+          return callback(self, select(2, ...))
         end
-        return callback(self, unpack(arguments))
+        return callback(self, ...)
       end
     end
   end
@@ -258,7 +257,7 @@ function M.inverse_search_cmd(line, filename, column)
   if line > 0 and filename ~= "" then
     local server_file = require("vimtex.cache").path "nvim_servernames.log"
     local servers = vim.fn.filereadable(server_file) == 1
-        and vim.fn.readfile(server_file)
+        and util.readfile(server_file)
       or {}
     for _, server in ipairs(servers) do
       local ok, socket = pcall(vim.fn.sockconnect, "pipe", server, { rpc = 1 })

@@ -1,5 +1,6 @@
 local M = { name = "LaTeX logfile" }
 local paths = require "vimtex.paths"
+local util = require "vimtex.util"
 
 local errorformat = {
   "%-P**%f",
@@ -137,7 +138,7 @@ local function fix_invalid(entry, root)
 end
 
 function M.fix_paths(main, log_file)
-  local quickfix, log = vim.fn.getqflist(), vim.fn.readfile(log_file)
+  local quickfix, log = vim.fn.getqflist(), util.readfile(log_file)
   local root, cache = vim.fn.fnamemodify(main, ":h"), { index = {}, paths = {} }
   for _, entry in ipairs(quickfix) do
     if

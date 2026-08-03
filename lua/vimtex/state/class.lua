@@ -24,25 +24,90 @@ function M.parse_optionlist(text)
   return options
 end
 
+local function skip_space(text, index)
+  while text:sub(index, index):match "%s" do
+    index = index + 1
+  end
+  return index
+end
+
 function M.parse_documentclass(preamble)
-  local class =
-    vim.fn.matchstr(preamble, [[\\documentclass[^{]*{\zs[^}]\+\ze}]])
-  local option_string =
-    vim.fn.matchstr(preamble, [=[\\documentclass[^\[]*\[\zs[^\]]\+\ze\]]=])
+  local command = "\\documentclass"
+  local start = preamble:find(command, 1, true)
+  if
+    not start or (start > 1 and preamble:sub(start - 1, start - 1) == "\\")
+  then
+    return { "", M.parse_optionlist "" }
+  end
+  local cursor = skip_space(preamble, start + #command)
+  local option_string = ""
+  if preamble:sub(cursor, cursor) == "[" then
+    local close = preamble:find("]", cursor + 1, true)
+    if not close then
+      return { "", M.parse_optionlist "" }
+    end
+    option_string = preamble:sub(cursor + 1, close - 1)
+    cursor = skip_space(preamble, close + 1)
+  end
+  if preamble:sub(cursor, cursor) ~= "{" then
+    return { "", M.parse_optionlist(option_string) }
+  end
+  local close = preamble:find("}", cursor + 1, true)
+  local class = close and preamble:sub(cursor + 1, close - 1) or ""
   return { class, M.parse_optionlist(option_string) }
 end
 
+local function parse_package_command(text, index)
+  local cursor = skip_space(text, index)
+  local option_text = ""
+  if text:sub(cursor, cursor) == "[" then
+    local close = text:find("]", cursor + 1, true)
+    if not close then
+      return index
+    end
+    option_text = text:sub(cursor + 1, close - 1)
+    cursor = skip_space(text, close + 1)
+  end
+  if text:sub(cursor, cursor) ~= "{" then
+    return index
+  end
+  local close = text:find("}", cursor + 1, true)
+  if not close then
+    return index
+  end
+  return close + 1, text:sub(cursor + 1, close - 1), option_text
+end
+
 function M.parse_packages(preamble)
-  local re = vim.g["vimtex#re#not_comment"]
-    .. vim.g["vimtex#re#not_bslash"]
-    .. [=[\v\\%(usep|RequireP)ackage\s*%(\[([^[\]]*)\])?\s*\{\s*\zs%([^{}]+\S)\ze\s*\}]=]
   local packages = vim.empty_dict()
-  for _, match in
-    ipairs(vim.fn.matchstrlist({ preamble }, re, { submatches = true }))
-  do
-    local options = M.parse_optionlist(match.submatches[1] or "")
-    for _, package in ipairs(vim.split(match.text, ",", { plain = true })) do
-      packages[vim.trim(package)] = options
+  local index = 1
+  while true do
+    local use = preamble:find("\\usepackage", index, true)
+    local require_package = preamble:find("\\RequirePackage", index, true)
+    local start
+    if use and require_package then
+      start = math.min(use, require_package)
+    else
+      start = use or require_package
+    end
+    if not start then
+      break
+    end
+
+    local command = start == use and "\\usepackage" or "\\RequirePackage"
+    index = start + #command
+    if start == 1 or preamble:sub(start - 1, start - 1) ~= "\\" then
+      local names, option_text
+      index, names, option_text = parse_package_command(preamble, index)
+      if names then
+        local options = M.parse_optionlist(option_text)
+        for package_name in names:gmatch "[^,]+" do
+          local trimmed = vim.trim(package_name)
+          if trimmed ~= "" then
+            packages[trimmed] = options
+          end
+        end
+      end
     end
   end
   return packages
@@ -56,7 +121,7 @@ function M.parse_graphicspath(preamble, root)
   )
   local result = {}
   for _, path in ipairs(vim.split(value, [[\s*}\s*{\s*]])) do
-    path = vim.fn.substitute(path, [[/\s*$]], "", "")
+    path = path:gsub("/%s*$", "")
     table.insert(
       result,
       paths.is_abs(path) and path or vim.fn.simplify(root .. "/" .. path)
@@ -72,9 +137,10 @@ function M.parse_glossaries(preamble, root, packages)
   local searching, result = false, {}
   for _, original in ipairs(preamble) do
     local line = original
-    if line:match [[^%s*\GlsXtrLoadResources%s*%[]] then
+    local resources = line:match "^%s*\\GlsXtrLoadResources%s*%[(.*)"
+    if resources then
       searching = true
-      line = vim.fn.matchstr(line, [[^\s*\\GlsXtrLoadResources\s*\[\zs.*]])
+      line = resources
     end
     if searching then
       local fields = vim.split(line, "[=,]")
@@ -109,6 +175,20 @@ function M.gather_sources(texfile, root)
 end
 
 local methods = {}
+
+local function strip_comment(line)
+  local start = 1
+  while true do
+    local index = line:find("%", start, true)
+    if not index then
+      return line
+    end
+    if index == 1 or line:sub(index - 1, index - 1) ~= "\\" then
+      return line:sub(1, index - 1)
+    end
+    start = index + 1
+  end
+end
 
 function methods.__pprint(self)
   local items = {
@@ -169,7 +249,7 @@ function methods.get_sources(self, options)
   if not self.__sources or options.refresh then
     self.__sources = M.gather_sources(self.tex, self.root)
   end
-  return vim.deepcopy(self.__sources)
+  return vim.list_slice(self.__sources)
 end
 
 function methods.getftime(self)
@@ -184,15 +264,14 @@ function methods.update_packages(self)
   if not self.compiler then
     return
   end
-  for _, line in
-    ipairs(require("vimtex.parser").fls(self.compiler.get_file "fls"))
-  do
-    local package = vim.fn.fnamemodify(
-      vim.fn.matchstr(line, [[^INPUT \zs.\+\ze\.sty$]]),
-      ":t"
-    )
-    if package ~= "" then
-      self.packages[package] = {}
+  local lines = self.compiler.read_file and self.compiler.read_file "fls"
+    or require("vimtex.parser").fls(self.compiler.get_file "fls")
+  for _, line in ipairs(lines) do
+    if line:sub(1, 6) == "INPUT " and line:sub(-4) == ".sty" then
+      local package = line:sub(7, -5):match "[^/\\]+$"
+      if package then
+        self.packages[package] = {}
+      end
     end
   end
 end
@@ -202,15 +281,14 @@ function methods.get_tex_program(self)
   local lines =
     require("vimtex.parser").preamble(self.tex, { root = self.root })
   for index = 1, math.min(21, #lines) do
-    local value = vim.fn.matchstr(
-      lines[index],
-      [[\v^\c\s*\%\s*!?\s*tex\s+%(ts-)?program\s*\=\s*\zs.*$]]
-    )
-    if value ~= "" then
+    local line = lines[index]:lower()
+    local value = line:match "^%s*%%%s*!?%s*tex%s+ts%-program%s*=%s*(.+)$"
+      or line:match "^%s*%%%s*!?%s*tex%s+program%s*=%s*(.+)$"
+    if value then
       program = value
     end
   end
-  return vim.trim(program):lower()
+  return vim.trim(program)
 end
 
 function methods.is_compileable(self)
@@ -237,7 +315,7 @@ function M.new(options)
     base = paths.relative(opts.main, root)
   end
   local extension = vim.fn.fnamemodify(opts.main, ":e"):lower()
-  local self = vim.tbl_extend("force", vim.deepcopy(methods), {
+  local self = {
     root = root,
     base = base,
     name = vim.fn.fnamemodify(opts.main, ":t:r"),
@@ -248,32 +326,42 @@ function M.new(options)
     )
         and paths.join(root, base)
       or "",
-  })
+  }
   for name, method in pairs(methods) do
     self[name] = function(...)
-      local arguments = { ... }
-      if arguments[1] == self then
-        table.remove(arguments, 1)
+      if select(1, ...) == self then
+        return method(self, select(2, ...))
       end
-      return method(self, unpack(arguments))
+      return method(self, ...)
     end
   end
-  local preamble = self.tex ~= ""
-      and require("vimtex.parser").preamble(self.tex, { root = root })
-    or {}
-  local joined = table.concat(vim.tbl_map(function(line)
-    return vim.fn.substitute(line, [[\\\@<!%.*]], "", "")
-  end, preamble))
+  local preamble = opts.preamble
+    or (
+      self.tex ~= ""
+        and require("vimtex.parser").preamble(self.tex, { root = root })
+      or {}
+    )
+  local uncommented = {}
+  for index, line in ipairs(preamble) do
+    uncommented[index] = strip_comment(line)
+  end
+  local joined = table.concat(uncommented)
   local document = M.parse_documentclass(joined)
   self.documentclass, self.documentclass_options = document[1], document[2]
   self.packages = M.parse_packages(joined)
   self.graphicspath = M.parse_graphicspath(joined, root)
   self.glossaries = M.parse_glossaries(preamble, root, self.packages)
   local unsupported = opts.unsupported_modules
-  if not vim.tbl_contains(unsupported, "compiler") then
+  if
+    vim.g.vimtex_compiler_enabled ~= 0
+    and not vim.tbl_contains(unsupported, "compiler")
+  then
     require("vimtex.compiler").init_state(self)
   end
-  if not vim.tbl_contains(unsupported, "view") then
+  if
+    vim.g.vimtex_view_enabled ~= 0
+    and not vim.tbl_contains(unsupported, "view")
+  then
     require("vimtex.view").init_state(self)
   end
   if not vim.tbl_contains(unsupported, "qf") then

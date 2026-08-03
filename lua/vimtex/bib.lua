@@ -1,5 +1,6 @@
 local cache = require "vimtex.cache"
 local kpsewhich = require "vimtex.kpsewhich"
+local util = require "vimtex.util"
 
 local M = {}
 
@@ -45,7 +46,7 @@ local function manual_files(state)
       current.ftime = mtime
       current.files = {}
 
-      for _, line in ipairs(vim.fn.readfile(file)) do
+      for _, line in ipairs(util.readfile(file)) do
         line = line:gsub("%%.*$", "")
         local command = line:match "\\([A-Za-z]+)%s*%b[]%s*{"
         if not command then
@@ -107,7 +108,7 @@ function M.files()
       local bcf = compiler_file "bcf"
       if vim.fn.filereadable(bcf) == 1 then
         local bibs = {}
-        for _, line in ipairs(vim.fn.readfile(bcf)) do
+        for _, line in ipairs(util.readfile(bcf)) do
           if line:find("bcf:datasource", 1, true) then
             bibs[#bibs + 1] = line:match "<[^>]*>([^<]*)" or ""
           end
@@ -126,7 +127,7 @@ function M.files()
     local blg = compiler_file "blg"
     if vim.fn.filereadable(blg) == 1 then
       local bibs = {}
-      for _, line in ipairs(vim.fn.readfile(blg)) do
+      for _, line in ipairs(util.readfile(blg)) do
         local file = line:match "^Database file #%d+: (.*)%.bib$"
         if file then
           local ignored_biblatex = state.packages.biblatex

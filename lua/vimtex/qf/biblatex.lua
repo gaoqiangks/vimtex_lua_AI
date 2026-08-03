@@ -1,4 +1,5 @@
 local M = {}
+local util = require "vimtex.util"
 
 local errorformat = {
   "%+E%.%#> ERROR%m",
@@ -37,7 +38,7 @@ local function key_line(key, filename)
     return 0
   end
   local result = 0
-  for line_number, line in ipairs(vim.fn.readfile(filename)) do
+  for line_number, line in ipairs(util.readfile(filename)) do
     if vim.fn.match(line, [[^\s*@\w*{\s*\V]] .. key) >= 0 then
       result = line_number
     end
@@ -72,7 +73,7 @@ local function entry_key(name, line, files)
     if vim.fn.fnamemodify(file, ":t") == name then
       local latest = ""
       for _, text in
-        ipairs(vim.list_slice(vim.fn.readfile(file), 1, tonumber(line)))
+        ipairs(vim.list_slice(util.readfile(file), 1, tonumber(line)))
       do
         if text:match "^@" then
           latest = text

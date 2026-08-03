@@ -56,9 +56,8 @@ local function evaluate_rhs(map)
   return vim.fn.eval(map.rhs)
 end
 
-local function create_map(map)
-  vim.b.vimtex_imaps = vim.b.vimtex_imaps or {}
-  for _, existing in ipairs(vim.b.vimtex_imaps) do
+local function create_map(map, maps, contexts)
+  for _, existing in ipairs(maps) do
     if vim.deep_equal(existing, map) then
       return
     end
@@ -67,9 +66,7 @@ local function create_map(map)
   local leader = copy.leader or vim.g.vimtex_imaps_leader
   local lhs = leader .. copy.lhs
   if copy.context then
-    local contexts = vim.b.vimtex_context or {}
     contexts[lhs .. copy.rhs] = copy.context
-    vim.b.vimtex_context = contexts
   end
   local name = wrapper_name(copy.wrapper)
   vim.keymap.set("i", lhs, function()
@@ -80,15 +77,17 @@ local function create_map(map)
     end
     return vim.fn[copy.wrapper](lhs, rhs)
   end, { buffer = true, expr = true, silent = true, nowait = true })
-  local maps = vim.b.vimtex_imaps or {}
   table.insert(maps, copy)
-  vim.b.vimtex_imaps = maps
 end
 
 function M.add_map(map)
   table.insert(custom_maps, map)
   if vim.b.vimtex_imaps then
-    create_map(map)
+    local maps = vim.b.vimtex_imaps
+    local contexts = vim.b.vimtex_context or {}
+    create_map(map, maps, contexts)
+    vim.b.vimtex_imaps = maps
+    vim.b.vimtex_context = contexts
   end
 end
 
@@ -130,20 +129,24 @@ function M.init_buffer()
   if vim.g.vimtex_imaps_enabled == 0 then
     return
   end
-  vim.b.vimtex_imaps = vim.b.vimtex_imaps or {}
+  local maps = vim.b.vimtex_imaps or {}
+  local contexts = vim.b.vimtex_context or {}
   local disabled = {}
   for _, lhs in ipairs(vim.g.vimtex_imaps_disabled or {}) do
     disabled[lhs] = true
   end
-  for _, map in
-    ipairs(
-      vim.list_extend(vim.deepcopy(vim.g.vimtex_imaps_list or {}), custom_maps)
-    )
-  do
+  for _, map in ipairs(vim.g.vimtex_imaps_list or {}) do
     if not disabled[map.lhs] then
-      create_map(map)
+      create_map(map, maps, contexts)
     end
   end
+  for _, map in ipairs(custom_maps) do
+    if not disabled[map.lhs] then
+      create_map(map, maps, contexts)
+    end
+  end
+  vim.b.vimtex_imaps = maps
+  vim.b.vimtex_context = contexts
   vim.api.nvim_buf_create_user_command(0, "VimtexImapsList", M.list, {})
   vim.keymap.set("n", "<plug>(vimtex-imaps-list)", M.list, { buffer = true })
 end

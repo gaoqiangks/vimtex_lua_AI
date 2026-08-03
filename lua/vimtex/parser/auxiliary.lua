@@ -1,29 +1,33 @@
 local M = {}
 
 local cache = require "vimtex.cache"
+local paths = require "vimtex.paths"
 local tex = require "vimtex.parser.tex"
 local util = require "vimtex.util"
 
 local function input_line_parser(line, source)
-  local file = vim.fn.matchstr(line, [[\\@input{\zs[^}]\+\ze}]])
-  file = vim.fn.substitute(file, [[\.aux]], "", "")
-  file = vim.fn.substitute(file, [[^\(\s\|"\)*]], "", "")
-  file = vim.fn.substitute(file, [[\(\s\|"\)*$]], "", "") .. ".aux"
-  if vim.fn.match(file, [[\v^(\/|[A-Z]:)]]) < 0 then
+  local file = line:match "\\@input{([^}]+)}" or ""
+  file = file:gsub("%.aux", "", 1)
+  file = file:gsub('^[%s"]*', ""):gsub('[%s"]*$', "") .. ".aux"
+  if not paths.is_abs(file) then
     file = vim.fn.fnamemodify(source, ":p:h") .. "/" .. file
   end
-  return vim.fn.filereadable(file) == 1 and file or ""
+  return file
 end
 
 local function parse_recursive(file, parsed)
-  if vim.fn.filereadable(file) == 0 or parsed[file] then
+  if parsed[file] then
+    return {}
+  end
+  local content, readable = util.readfile(file)
+  if not readable then
     return {}
   end
   parsed[file] = true
   local lines = {}
-  for _, line in ipairs(vim.fn.readfile(file)) do
+  for _, line in ipairs(content) do
     lines[#lines + 1] = line
-    if vim.fn.match(line, [[\\@input{]]) >= 0 then
+    if line:find("\\@input{", 1, true) then
       vim.list_extend(
         lines,
         parse_recursive(input_line_parser(line, file), parsed)
@@ -56,7 +60,7 @@ local function parse_labels(file, prefix)
       original:find("\\newlabel{", 1, true)
       and not original:find("@cref", 1, true)
       and not original:find("sub@", 1, true)
-      and vim.fn.match(original, [=[tocindent-\?[0-9]]=]) < 0
+      and not original:find "tocindent%-?%d"
     then
       local tree = util.tex2tree(util.tex2unicode(original))
       table.remove(tree, 1)
@@ -97,12 +101,12 @@ local function external_files()
   end
   local result = {}
   for _, line in ipairs(tex.parse_preamble(state.tex)) do
-    if vim.fn.match(line, [[\\externaldocument]]) >= 0 then
-      local name = vim.fn.matchstr(line, [[{\zs[^}]*\ze}]])
+    if line:find("\\externaldocument", 1, true) then
+      local name = line:match "{([^}]*)}" or ""
       result[#result + 1] = {
         tex = name .. ".tex",
         aux = name .. ".aux",
-        opt = vim.fn.matchstr(line, [=[\[\zs[^]]*\ze\]]=]),
+        opt = line:match "%[([^]]*)%]" or "",
       }
     end
   end
@@ -134,9 +138,10 @@ function M.labels()
   local labels = {}
   for _, item in ipairs(files) do
     local file, prefix = item[1], item[2]
-    if vim.fn.filereadable(file) == 1 then
+    local stat = vim.uv.fs_stat(file)
+    if stat and stat.type == "file" then
       local current = store:get(file)
-      local file_time = vim.fn.getftime(file)
+      local file_time = stat.mtime.sec
       if file_time > current.ftime then
         current.ftime = file_time
         current.labels = parse_labels(file, prefix)
@@ -156,20 +161,23 @@ function M.labels_manual()
   end
   local labels = {}
   for _, line in ipairs(tex.parse(state.tex, { detailed = false })) do
-    if vim.fn.match(line, [[^\s*%]]) < 0 then
-      local clean = vim.fn.substitute(line, [[\\\@<!%.*$]], "", "")
-      local position = 0
+    if not line:find "^%s*%%" then
+      local start = 1
       while true do
-        local found =
-          vim.fn.matchstrpos(clean, [[\\label\s*{\([^}]\+\)}]], position)
-        if found[2] < 0 then
+        local comment = line:find("%", start, true)
+        if not comment then
           break
         end
-        local label = vim.fn.matchstr(found[1], [[\\label\s*{\zs[^}]\+\ze}]])
+        if comment == 1 or line:sub(comment - 1, comment - 1) ~= "\\" then
+          line = line:sub(1, comment - 1)
+          break
+        end
+        start = comment + 1
+      end
+      for label in line:gmatch "\\label%s*{([^}]+)}" do
         if label ~= "" then
           labels[#labels + 1] = label
         end
-        position = found[3]
       end
     end
   end

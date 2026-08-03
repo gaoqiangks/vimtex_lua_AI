@@ -1,6 +1,7 @@
 local M = {}
 local paths = require "vimtex.paths"
 local parser = require "vimtex.parser"
+local util = require "vimtex.util"
 local complete_dir = vim.fn.fnamemodify(
   debug.getinfo(1, "S").source:sub(2),
   ":p:h:h:h"
@@ -8,6 +9,7 @@ local complete_dir = vim.fn.fnamemodify(
 
 local active
 local texmf_cache = {}
+local bib_candidate_cache = {}
 
 local function matches(text, regex, ignore_case)
   return vim.fn.match(text, (ignore_case and [=[\c]=] or [=[\C]=]) .. regex)
@@ -16,12 +18,27 @@ end
 
 local function filter(candidates, regex, options)
   options = options or {}
-  local pattern = (options.anchor == false and "" or "^") .. regex
+  local anchor = options.anchor ~= false
   local ignore_case = vim.g.vimtex_complete_ignore_case == 1
     and (
       vim.g.vimtex_complete_smart_case == 0
       or vim.fn.match(regex, [=[\u]=]) < 0
     )
+  if regex:match "^[%w_:%- /]*$" then
+    local needle = ignore_case and regex:lower() or regex
+    return vim.tbl_filter(function(candidate)
+      local value = type(candidate) == "table"
+          and candidate[options.key or "word"]
+        or candidate
+      value = tostring(value or "")
+      if ignore_case then
+        value = value:lower()
+      end
+      return anchor and value:sub(1, #needle) == needle
+        or not anchor and value:find(needle, 1, true) ~= nil
+    end, candidates)
+  end
+  local pattern = (anchor and "^" or "") .. regex
   return vim.tbl_filter(function(candidate)
     local value = type(candidate) == "table"
         and candidate[options.key or "word"]
@@ -44,7 +61,7 @@ end
 
 local function texmf(filetype)
   if texmf_cache[filetype] then
-    return vim.deepcopy(texmf_cache[filetype])
+    return vim.list_slice(texmf_cache[filetype])
   end
   local result = {}
   local home = vim.env.TEXMFHOME or ""
@@ -60,7 +77,7 @@ local function texmf(filetype)
   end
   for _, database in ipairs(require("vimtex.kpsewhich").run "--all ls-R") do
     if vim.fn.filereadable(database) == 1 then
-      for _, line in ipairs(vim.fn.readfile(database)) do
+      for _, line in ipairs(util.readfile(database)) do
         if line:match("%." .. filetype .. "$") then
           table.insert(result, vim.fn.fnamemodify(line, ":r"))
         end
@@ -68,16 +85,18 @@ local function texmf(filetype)
     end
   end
   texmf_cache[filetype] = uniq(result)
-  return vim.deepcopy(texmf_cache[filetype])
+  return vim.list_slice(texmf_cache[filetype])
 end
 
 local function candidate_from_bib(entry)
   local author = (entry.author or "Unknown"):gsub("~", " ")
+  local author_length = vim.g.vimtex_complete_bib.auth_len
   local substitutes = {
-    ["@author_all"] = vim.g.vimtex_complete_bib.auth_len > 0
-        and vim.fn.strcharpart(author, 0, vim.g.vimtex_complete_bib.auth_len)
-      or author,
-    ["@author_short"] = vim.fn.substitute(author, [=[,.*\ze]=], " et al.", ""),
+    ["@author_all"] = author_length > 0 and author:sub(
+      1,
+      vim.str_byteindex(author, "utf-32", author_length, false)
+    ) or author,
+    ["@author_short"] = author:gsub(",.*", " et al.", 1),
     ["@key"] = entry.key,
     ["@title"] = entry.title or "No title",
     ["@type"] = entry.type == "" and "-" or entry.type,
@@ -101,30 +120,56 @@ local function candidate_from_bib(entry)
 end
 
 local function complete_bib(regex)
-  local result = {}
+  local project = require("vimtex.state").get(vim.b.vimtex_id)
   paths.pushd(vim.b.vimtex.root)
-  for _, file in ipairs(require("vimtex.bib").files()) do
-    for _, entry in ipairs(parser.bib(file)) do
-      table.insert(result, candidate_from_bib(entry))
+  local files = require("vimtex.bib").files()
+  local signature = { vim.inspect(vim.g.vimtex_complete_bib) }
+  for _, file in ipairs(files) do
+    local stat = vim.uv.fs_stat(file)
+    signature[#signature + 1] = file
+    signature[#signature + 1] = stat
+        and (stat.size .. ":" .. stat.mtime.sec .. ":" .. stat.mtime.nsec)
+      or "missing"
+  end
+  local tex_stat = vim.uv.fs_stat(project.tex)
+  signature[#signature + 1] = tex_stat
+      and (tex_stat.size .. ":" .. tex_stat.mtime.sec .. ":" .. tex_stat.mtime.nsec)
+    or "missing"
+  signature = table.concat(signature, "\0")
+  local cached = bib_candidate_cache[project.tex]
+  local result
+  if cached and cached.signature == signature then
+    result = vim.deepcopy(cached.candidates)
+  else
+    result = {}
+    for _, file in ipairs(files) do
+      for _, entry in ipairs(parser.bib(file)) do
+        table.insert(result, candidate_from_bib(entry))
+      end
     end
+    for _, line in ipairs(parser.tex(project.tex, { detailed = false })) do
+      local key = line:find("\\bibitem", 1, true)
+          and (line:match "\\bibitem%s*%b[]%s*{([^}]*)" or line:match "\\bibitem%s*{([^}]*)")
+        or ""
+      if key ~= "" then
+        table.insert(
+          result,
+          candidate_from_bib {
+            key = key,
+            type = "thebibliography",
+            author = "",
+            year = "",
+            title = key,
+          }
+        )
+      end
+    end
+    bib_candidate_cache[project.tex] = {
+      signature = signature,
+      candidates = vim.deepcopy(result),
+    }
   end
   paths.popd()
-  local project = require("vimtex.state").get(vim.b.vimtex_id)
-  for _, line in ipairs(parser.tex(project.tex, { detailed = false })) do
-    local key = vim.fn.matchstr(line, [=[\\bibitem\%(\[[^]]*\]\)\?{\zs[^}]*]=])
-    if key ~= "" then
-      table.insert(
-        result,
-        candidate_from_bib {
-          key = key,
-          type = "thebibliography",
-          author = "",
-          year = "",
-          title = key,
-        }
-      )
-    end
-  end
   if vim.g.vimtex_complete_bib.simple == 1 then
     return filter(result, regex)
   end
@@ -164,14 +209,16 @@ end
 local function packages()
   local result = { "default", "class-" .. (vim.b.vimtex.documentclass or "") }
   vim.list_extend(result, vim.tbl_keys(vim.b.vimtex.packages or {}))
-  local queue, seen = vim.deepcopy(result), {}
-  while #queue > 0 do
-    local package = table.remove(queue, 1)
+  local queue, seen = vim.list_slice(result), {}
+  local index = 1
+  while index <= #queue do
+    local package = queue[index]
+    index = index + 1
     if not seen[package] then
       seen[package] = true
       local file = complete_dir .. "/" .. package
       if vim.fn.filereadable(file) == 1 then
-        for _, line in ipairs(vim.fn.readfile(file)) do
+        for _, line in ipairs(util.readfile(file)) do
           local included = line:match "^#%s*include:%s*(.-)%s*$"
           if included and not seen[included] then
             table.insert(result, included)
@@ -191,21 +238,38 @@ local function parse_source(lines, package)
   local environment_re =
     [=[\v\\((renew|new)environment|(New|Renew|Provide|Declare)DocumentEnvironment)\*?\{\\?\zs[^}]*]=]
   for _, line in ipairs(lines) do
-    local command = vim.fn.matchstr(line, command_re)
+    local has_backslash = line:find("\\", 1, true) ~= nil
+    local command = has_backslash
+        and (line:find("command", 1, true) or line:find(
+          "DocumentCommand",
+          1,
+          true
+        ) or line:find("DeclarePairedDelimiter", 1, true))
+        and vim.fn.matchstr(line, command_re)
+      or ""
     if command ~= "" then
       table.insert(
         result.cmd,
         { word = command, mode = ".", kind = "[cmd: " .. package .. "]" }
       )
     end
-    local environment = vim.fn.matchstr(line, environment_re)
+    local environment = has_backslash
+        and (line:find("environment", 1, true) or line:find(
+          "DocumentEnvironment",
+          1,
+          true
+        ))
+        and vim.fn.matchstr(line, environment_re)
+      or ""
     if environment ~= "" then
       table.insert(
         result.env,
         { word = environment, mode = ".", kind = "[env: " .. package .. "]" }
       )
     end
-    local let = vim.fn.matchstr(line, [=[\\\%(let\|def\)[^\\]*\\\zs\w*]=])
+    local let = has_backslash
+        and (line:match "\\let[^\\]*\\([%w_]*)" or line:match "\\def[^\\]*\\([%w_]*)")
+      or ""
     if let ~= "" then
       table.insert(
         local_commands,
@@ -219,9 +283,10 @@ end
 
 local function load_package(package, kind)
   local file = complete_dir .. "/" .. package
-  if vim.fn.filereadable(file) == 1 then
+  local lines, readable = util.readfile(file)
+  if readable then
     local result = {}
-    for _, line in ipairs(vim.fn.readfile(file)) do
+    for _, line in ipairs(lines) do
       if kind == "cmd" and line:match "^%a" then
         local fields = vim.split(line, "%s+")
         table.insert(result, {
@@ -246,10 +311,7 @@ local function load_package(package, kind)
   local source = package:match "^class%-"
       and require("vimtex.kpsewhich").find(package:sub(7) .. ".cls")
     or require("vimtex.kpsewhich").find(package .. ".sty")
-  return parse_source(
-    vim.fn.filereadable(source) == 1 and vim.fn.readfile(source) or {},
-    package
-  )[kind]
+  return parse_source(util.readfile(source), package)[kind]
 end
 
 local function document_candidates(kind)

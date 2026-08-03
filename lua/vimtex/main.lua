@@ -25,6 +25,29 @@ local modules = {
   "view",
 }
 
+-- Do not load feature modules that are explicitly disabled. Their
+-- init_buffer() functions also guard themselves, but requiring them can pull
+-- in sizeable parser and backend dependency trees for no effect.
+local module_options = {
+  compiler = "vimtex_compiler_enabled",
+  complete = "vimtex_complete_enabled",
+  doc = "vimtex_doc_enabled",
+  fold = "vimtex_fold_enabled",
+  format = "vimtex_format_enabled",
+  imaps = "vimtex_imaps_enabled",
+  matchparen = "vimtex_matchparen_enabled",
+  motion = "vimtex_motion_enabled",
+  qf = "vimtex_quickfix_enabled",
+  text_obj = "vimtex_text_obj_enabled",
+  toc = "vimtex_toc_enabled",
+  view = "vimtex_view_enabled",
+}
+
+local function module_enabled(name)
+  local option = module_options[name]
+  return not option or vim.g[option] ~= 0
+end
+
 local buffer_ids = {}
 
 local function init_filetype()
@@ -306,7 +329,7 @@ local function init_buffer()
     end,
   })
   for _, name in ipairs(modules) do
-    if not disabled[name] then
+    if not disabled[name] and module_enabled(name) then
       local ok, module = pcall(require, "vimtex." .. name)
       if ok and type(module.init_buffer) == "function" then
         pcall(module.init_buffer)

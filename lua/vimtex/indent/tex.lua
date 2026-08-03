@@ -8,7 +8,17 @@ local function matches(line, pattern)
 end
 
 local function clean_line(line)
-  return vim.fn.substitute(line, [[\s*\\\@<!%.*]], "", "")
+  local start = 1
+  while true do
+    local index = line:find("%", start, true)
+    if not index then
+      return line
+    end
+    if index == 1 or line:sub(index - 1, index - 1) ~= "\\" then
+      return line:sub(1, index - 1):gsub("%s*$", "")
+    end
+    start = index + 1
+  end
 end
 
 local function in_verbatim(line_number)
@@ -21,7 +31,8 @@ end
 local function previous_line(line_number)
   local line = vim.fn.getline(line_number)
   while
-    line_number > 0 and (matches(line, [[^\s*%]]) or in_verbatim(line_number))
+    line_number > 0
+    and (line:find "^%s*%%" ~= nil or in_verbatim(line_number))
   do
     line_number = vim.fn.prevnonblank(line_number - 1)
     line = vim.fn.getline(line_number)
@@ -33,49 +44,54 @@ local function count(line, pattern)
   if pattern == "" then
     return 0
   end
-  local total = 0
-  while vim.fn.match(line, pattern, 0, total + 1) >= 0 do
+  local total, start = 0, 0
+  while start <= #line do
+    local found = vim.fn.matchstrpos(line, pattern, start)
+    if found[2] < 0 then
+      break
+    end
     total = total + 1
+    start = found[3] > found[2] and found[3] or found[3] + 1
   end
   return total
 end
 
 local function count_open(line, opening, closing)
-  local index = vim.fn.match(line, opening)
-  if index < 0 then
+  local found = vim.fn.matchstrpos(line, opening)
+  if found[2] < 0 then
     return 0
   end
-  local total, first = 0, index
-  while index >= 0 do
+  local total, first = 0, found[2]
+  while found[2] >= 0 do
     total = total + 1
-    index = index + #vim.fn.matchstr(line, opening, index)
-    index = vim.fn.match(line, opening, index)
+    local start = found[3] > found[2] and found[3] or found[3] + 1
+    found = vim.fn.matchstrpos(line, opening, start)
   end
-  index = vim.fn.match(line, closing, first)
-  while index >= 0 do
+  found = vim.fn.matchstrpos(line, closing, first)
+  while found[2] >= 0 do
     total = total - 1
-    index = index + #vim.fn.matchstr(line, closing, index)
-    index = vim.fn.match(line, closing, index)
+    local start = found[3] > found[2] and found[3] or found[3] + 1
+    found = vim.fn.matchstrpos(line, closing, start)
   end
   return math.max(total, 0)
 end
 
 local function count_close(line, opening, closing)
-  local index = vim.fn.match(line, closing)
-  if index < 0 then
+  local found = vim.fn.matchstrpos(line, closing)
+  if found[2] < 0 then
     return 0
   end
-  local total, last = 0, index
-  while index >= 0 do
-    total, last = total + 1, index
-    index = index + #vim.fn.matchstr(line, closing, index)
-    index = vim.fn.match(line, closing, index)
+  local total, last = 0, found[2]
+  while found[2] >= 0 do
+    total, last = total + 1, found[2]
+    local start = found[3] > found[2] and found[3] or found[3] + 1
+    found = vim.fn.matchstrpos(line, closing, start)
   end
-  index = vim.fn.match(line, opening)
-  while index >= 0 and index < last do
+  found = vim.fn.matchstrpos(line, opening)
+  while found[2] >= 0 and found[2] < last do
     total = total - 1
-    index = index + #vim.fn.matchstr(line, opening, index)
-    index = vim.fn.match(line, opening, index)
+    local start = found[3] > found[2] and found[3] or found[3] + 1
+    found = vim.fn.matchstrpos(line, opening, start)
   end
   return math.max(total, 0)
 end

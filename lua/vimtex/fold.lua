@@ -652,7 +652,10 @@ function M.level(lnum)
     return "="
   end
   local line, nextline = vim.fn.getline(lnum), vim.fn.getline(lnum + 1)
-  if matches(line, [[^\s*\\\%(begin\|end\){document}]]) then
+  if
+    line:find "^%s*\\begin%s*{document}"
+    or line:find "^%s*\\end%s*{document}"
+  then
     return 0
   end
   if

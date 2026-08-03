@@ -226,53 +226,88 @@ function M.command(command)
   )
 end
 
+---Read a text file without crossing through Vimscript's readfile().
+---This is especially faster for project files on WSL-mounted filesystems.
+---@param path string
+---@return string[]
+---@return boolean
+function M.readfile(path)
+  local fd = vim.uv.fs_open(path, "r", 438)
+  if not fd then
+    return {}, false
+  end
+  local stat = vim.uv.fs_fstat(fd)
+  if not stat then
+    vim.uv.fs_close(fd)
+    return {}, false
+  end
+  local data = stat.size > 0 and vim.uv.fs_read(fd, stat.size, 0) or ""
+  vim.uv.fs_close(fd)
+  if not data or data == "" then
+    return {}, data ~= nil
+  end
+  local lines = vim.split(data, "\n", { plain = true })
+  if data:sub(-1) == "\n" then
+    table.remove(lines)
+  end
+  for index, line in ipairs(lines) do
+    lines[index] = line:gsub("\r$", ""):gsub("%z", "\n")
+  end
+  return lines, true
+end
+
 function M.count(line, pattern)
   if pattern == "" then
     return 0
   end
-  local total = 0
-  while vim.fn.match(line, pattern, 0, total + 1) >= 0 do
+  local total, start = 0, 0
+  while start <= #line do
+    local found = vim.fn.matchstrpos(line, pattern, start)
+    if found[2] < 0 then
+      break
+    end
     total = total + 1
+    start = found[3] > found[2] and found[3] or found[3] + 1
   end
   return total
 end
 
 function M.count_open(line, opening, closing)
-  local index = vim.fn.match(line, opening)
-  if index < 0 then
+  local found = vim.fn.matchstrpos(line, opening)
+  if found[2] < 0 then
     return 0
   end
-  local total, first = 0, index
-  while index >= 0 do
+  local total, first = 0, found[2]
+  while found[2] >= 0 do
     total = total + 1
-    index = index + #vim.fn.matchstr(line, opening, index)
-    index = vim.fn.match(line, opening, index)
+    local start = found[3] > found[2] and found[3] or found[3] + 1
+    found = vim.fn.matchstrpos(line, opening, start)
   end
-  index = vim.fn.match(line, closing, first)
-  while index >= 0 do
+  found = vim.fn.matchstrpos(line, closing, first)
+  while found[2] >= 0 do
     total = total - 1
-    index = index + #vim.fn.matchstr(line, closing, index)
-    index = vim.fn.match(line, closing, index)
+    local start = found[3] > found[2] and found[3] or found[3] + 1
+    found = vim.fn.matchstrpos(line, closing, start)
   end
   return math.max(total, 0)
 end
 
 function M.count_close(line, opening, closing)
-  local index = vim.fn.match(line, closing)
-  if index < 0 then
+  local found = vim.fn.matchstrpos(line, closing)
+  if found[2] < 0 then
     return 0
   end
-  local total, last = 0, index
-  while index >= 0 do
-    total, last = total + 1, index
-    index = index + #vim.fn.matchstr(line, closing, index)
-    index = vim.fn.match(line, closing, index)
+  local total, last = 0, found[2]
+  while found[2] >= 0 do
+    total, last = total + 1, found[2]
+    local start = found[3] > found[2] and found[3] or found[3] + 1
+    found = vim.fn.matchstrpos(line, closing, start)
   end
-  index = vim.fn.match(line, opening)
-  while index >= 0 and index < last do
+  found = vim.fn.matchstrpos(line, opening)
+  while found[2] >= 0 and found[2] < last do
     total = total - 1
-    index = index + #vim.fn.matchstr(line, opening, index)
-    index = vim.fn.match(line, opening, index)
+    local start = found[3] > found[2] and found[3] or found[3] + 1
+    found = vim.fn.matchstrpos(line, opening, start)
   end
   return math.max(total, 0)
 end

@@ -1,11 +1,8 @@
 local M = {}
+local util = require "vimtex.util"
 
 function M.parse(file)
-  if vim.fn.filereadable(file) == 0 then
-    return {}
-  end
-
-  return vim.fn.readfile(file)
+  return util.readfile(file)
 end
 
 return M

@@ -382,7 +382,8 @@ function M.sections(inner, visual)
 end
 
 local function item_selection(inner)
-  local cursor, cursor_value = pos.get_cursor(), pos.val(pos.get_cursor())
+  local cursor = pos.get_cursor()
+  local cursor_value = pos.val(cursor)
   local depth, current, first = 0, pos.next(cursor), nil
   while true do
     pos.set_cursor(pos.prev(current))
