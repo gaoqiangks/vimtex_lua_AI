@@ -2,6 +2,8 @@
 >
 > **This project is AI-generated.** It is an experimental Lua rewrite of
 > [VimTeX](https://github.com/lervag/vimtex), produced and optimized with AI.
+> It is fully compatible with the configuration syntax of `lervag/vimtex`, so
+> existing VimTeX configuration can be used without modification.
 > It is not the official VimTeX distribution and is not maintained by the
 > upstream VimTeX project.
 
