@@ -651,7 +651,8 @@ function M.level(lnum)
   if not state then
     return "="
   end
-  local line, nextline = vim.fn.getline(lnum), vim.fn.getline(lnum + 1)
+  local lines = vim.api.nvim_buf_get_lines(0, lnum - 1, lnum + 1, false)
+  local line, nextline = lines[1] or "", lines[2] or ""
   if
     line:find "^%s*\\begin%s*{document}"
     or line:find "^%s*\\end%s*{document}"

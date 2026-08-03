@@ -861,9 +861,10 @@ function M.parse(file)
   local matchers = M.get_matchers()
   local max_level = 0
   for _, item in ipairs(content) do
-    if matches(item[3], matchers.d.section.re) then
+    local line = item[3]
+    if line:find("\\", 1, true) and matches(line, matchers.d.section.re) then
       max_level =
-        math.max(max_level, M.level(matchers.d.section:level_name(item[3])))
+        math.max(max_level, M.level(matchers.d.section:level_name(line)))
     end
   end
   level:reset("preamble", max_level)
@@ -898,7 +899,10 @@ function M.parse(file)
       then
         level.preamble = 0
         matcher_list = matchers.content
-      elseif matches(line_text, matchers.prefilter) then
+      elseif
+        (line_text:find("\\", 1, true) or line_text:find("%", 1, true))
+        and matches(line_text, matchers.prefilter)
+      then
         for _, matcher in ipairs(matcher_list) do
           if matches(line_text, matcher.re) then
             local entry = call_matcher(matcher, "get_entry", context)

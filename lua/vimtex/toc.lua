@@ -56,11 +56,19 @@ local function visible(toc, entry)
     and (entry.type ~= "content" or entry.level <= toc.tocdepth)
 end
 
+local function visible_entries(toc, entries)
+  local result = {}
+  for _, entry in ipairs(entries or {}) do
+    if visible(toc, entry) then
+      result[#result + 1] = entry
+    end
+  end
+  return result
+end
+
 function M.get_visible_entries(toc)
   toc = toc or state()
-  return vim.tbl_filter(function(entry)
-    return visible(toc, entry)
-  end, vim.deepcopy(toc.entries or {}))
+  return visible_entries(toc, vim.deepcopy(toc.entries or {}))
 end
 
 function M.get_entries(force, toc)
@@ -149,7 +157,7 @@ end
 
 local function set_number_format(toc)
   local width = 0
-  for _, entry in ipairs(M.get_visible_entries(toc)) do
+  for _, entry in ipairs(visible_entries(toc, toc.entries)) do
     width = math.max(width, #M.print_number(entry.number, toc) + 1)
   end
   toc.number_width = toc.layer_status.content == 1
@@ -222,7 +230,7 @@ end
 
 local function print_entries(toc)
   set_number_format(toc)
-  for _, entry in ipairs(M.get_visible_entries(toc)) do
+  for _, entry in ipairs(visible_entries(toc, toc.entries)) do
     M.print_entry(entry, toc)
   end
 end
@@ -302,7 +310,7 @@ end
 
 local function activate_current(close_after, toc)
   local index = pos.get_cursor_line() - toc.help_nlines
-  local entries = M.get_visible_entries(toc)
+  local entries = visible_entries(toc, toc.entries)
   if entries[index] then
     activate(entries[index], close_after, toc)
   end

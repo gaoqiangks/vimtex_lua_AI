@@ -35,4 +35,8 @@ function M.load(_)
   vim.cmd "highlight def link texTCBEnvArg texArg"
 end
 
+function M.cleanup_buffer(buffer)
+  constructs[buffer] = nil
+end
+
 return M

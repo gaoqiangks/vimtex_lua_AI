@@ -363,7 +363,8 @@ function M.setup()
     opening = opening .. (opening == "" and "" or [[\|]]) .. regex.open
     closing = closing .. (closing == "" and "" or [[\|]]) .. regex.close
   end
-  configs[vim.api.nvim_get_current_buf()] = {
+  local buffer = vim.api.nvim_get_current_buf()
+  configs[buffer] = {
     sw = vim.fn.shiftwidth(),
     amp = not_backslash .. [[\&]],
     align = "^[ \\t\\\\]*" .. not_backslash .. [[\&]],
@@ -385,9 +386,19 @@ function M.setup()
     conditionals = vim.g.vimtex_indent_conditionals,
     tikz_commands = [[\v\\%(draw|fill|path|node|coordinate|clip|add%(legendentry|plot))]],
   }
-  local config = configs[vim.api.nvim_get_current_buf()]
+  local config = configs[buffer]
   config.begitem = config.item .. [[\|]] .. config.beglist
   config.enditem = config.item .. [[\|]] .. config.endlist
+  local group = vim.api.nvim_create_augroup("vimtex_indent", { clear = false })
+  vim.api.nvim_clear_autocmds { group = group, buffer = buffer }
+  vim.api.nvim_create_autocmd("BufWipeout", {
+    group = group,
+    buffer = buffer,
+    once = true,
+    callback = function()
+      configs[buffer] = nil
+    end,
+  })
 end
 
 _G.vimtex_indent_tex = M.indent

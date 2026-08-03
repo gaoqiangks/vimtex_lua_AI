@@ -191,4 +191,8 @@ function M.load()
   end
 end
 
+function M.cleanup_buffer(buffer)
+  databases[buffer] = nil
+end
+
 return M

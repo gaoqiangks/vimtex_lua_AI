@@ -430,6 +430,7 @@ function M.parse_cheap(start_line, end_line, opts)
 end
 
 local parse_cache = {}
+local backends = { lua = true, vim = true, bibtex = true, bibparse = true }
 
 local function copy_entries(entries)
   local result = {}
@@ -447,7 +448,7 @@ end
 function M.parse(filename, opts)
   opts = opts or {}
   local backend = opts.backend or vim.g.vimtex_parser_bib_backend or "lua"
-  if not vim.tbl_contains({ "lua", "vim", "bibtex", "bibparse" }, backend) then
+  if not backends[backend] then
     return {}
   end
   local stat = vim.uv.fs_stat(filename)
@@ -477,7 +478,7 @@ function M.parse(filename, opts)
   local item = {}
   local key, value
   for lnum, line in ipairs(lines) do
-    if vim.tbl_isempty(item) then
+    if next(item) == nil then
       item = parse_head(filename, lnum, line)
     else
       item = parse_tail(item, line)

@@ -111,4 +111,14 @@ function M.init()
   end
 end
 
+function M.cleanup_buffer(buffer)
+  for name in pairs(loaded_packages[buffer] or {}) do
+    local module = package.loaded["vimtex.syntax.p." .. name]
+    if module and type(module.cleanup_buffer) == "function" then
+      pcall(module.cleanup_buffer, buffer)
+    end
+  end
+  loaded_packages[buffer] = nil
+end
+
 return M

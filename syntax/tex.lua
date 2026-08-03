@@ -38,5 +38,13 @@ vim.api.nvim_create_autocmd("User", {
     vim.fn["VimtexSyntaxCore_init_post"]()
   end,
 })
+vim.api.nvim_create_autocmd("BufWipeout", {
+  group = group,
+  buffer = 0,
+  once = true,
+  callback = function(args)
+    require("vimtex.syntax.packages").cleanup_buffer(args.buf)
+  end,
+})
 
 vim.b.vimtex_syntax_loading = nil
