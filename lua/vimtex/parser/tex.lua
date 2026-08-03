@@ -18,6 +18,18 @@ local function matches(text, pattern)
   return vim.fn.match(text, pattern) >= 0
 end
 
+-- Most TeX command lines are unrelated to file inclusion. Keep them away
+-- from Vim's regex engine, which is considerably more expensive than these
+-- plain Lua substring checks.
+local function may_include(line)
+  return line:find("\\input", 1, true)
+    or line:find("\\include", 1, true)
+    or line:find("\\import", 1, true)
+    or line:find("\\subf", 1, true)
+    or line:find("\\subi", 1, true)
+    or line:find("\\loadglsentries", 1, true)
+end
+
 local function get_mtime(file)
   local stat = vim.uv.fs_stat(file)
   return stat and (stat.mtime.sec + stat.mtime.nsec / 1e9) or -1
@@ -32,13 +44,13 @@ local function options(opts)
 end
 
 function M.find_closing(start, text, count, delimiter)
-  local opening = delimiter == "{" and "{" or "["
-  local closing = delimiter == "{" and "}" or "]"
+  local opening = delimiter == "{" and 123 or 91
+  local closing = delimiter == "{" and 125 or 93
   -- `start` and the return value use Vim's zero-based byte offsets. Lua's
   -- byte indexing makes a direct scan substantially cheaper than repeatedly
   -- crossing into Vim's regex engine for single-character delimiters.
   for index = start + 1, #text do
-    local char = text:sub(index, index)
+    local char = text:byte(index)
     if char == opening then
       count = count + 1
     elseif char == closing then
@@ -130,7 +142,7 @@ local function parse_current(file, root, current)
     .. [[|^\s*\\loadglsentries]]
   for line_number, line in ipairs(util.readfile(file)) do
     current.lines[#current.lines + 1] = { file, line_number, line }
-    if line:find("\\", 1, true) and matches(line, input_pattern) then
+    if may_include(line) and matches(line, input_pattern) then
       local result = M.input_parser(line, file, root)
       current.lines[#current.lines + 1] = result
       if file == result.file then
@@ -147,8 +159,13 @@ local function parse_current(file, root, current)
   end
 end
 
-local function parse_recursive(file, root, store)
-  local current = store:get(file)
+local function parse_recursive(file, root, store, active)
+  active = active or {}
+  if active[file] then
+    return {}
+  end
+  active[file] = true
+  local current = store:get(root .. "\0" .. file)
   local file_time = get_mtime(file)
   if file_time > current.ftime then
     current.ftime = file_time
@@ -161,31 +178,72 @@ local function parse_recursive(file, root, store)
     else
       vim.list_extend(
         parsed,
-        parse_recursive(value.file, value.new_root, store)
+        parse_recursive(value.file, value.new_root, store, active)
       )
     end
   end
+  active[file] = nil
   return parsed
 end
 
-local function parse_files_recursive(file, root, store)
-  local current = store:get(file)
+local function parse_files_recursive(file, root, store, active)
+  active = active or {}
+  if active[file] then
+    return {}
+  end
+  active[file] = true
+  local current = store:get(root .. "\0" .. file)
   local file_time = get_mtime(file)
   if file_time > current.ftime then
     current.ftime = file_time
     parse_current(file, root, current)
   end
   if file_time < 0 then
+    active[file] = nil
     return {}
   end
   local files = { file }
   for _, included in ipairs(current.includes or {}) do
     vim.list_extend(
       files,
-      parse_files_recursive(included.file, included.new_root, store)
+      parse_files_recursive(included.file, included.new_root, store, active)
     )
   end
+  active[file] = nil
   return files
+end
+
+local function read_lines_until(file, callback)
+  local fd = vim.uv.fs_open(file, "r", 438)
+  if not fd then
+    return
+  end
+  local offset, pending = 0, ""
+  while true do
+    local chunk = vim.uv.fs_read(fd, 16384, offset)
+    if not chunk or chunk == "" then
+      break
+    end
+    offset = offset + #chunk
+    local data, start = pending .. chunk, 1
+    while true do
+      local finish = data:find("\n", start, true)
+      if not finish then
+        pending = data:sub(start)
+        break
+      end
+      local line = data:sub(start, finish - 1):gsub("\r$", ""):gsub("%z", "\n")
+      if callback(line) == false then
+        vim.uv.fs_close(fd)
+        return
+      end
+      start = finish + 1
+    end
+  end
+  vim.uv.fs_close(fd)
+  if pending ~= "" then
+    callback(pending:gsub("\r$", ""):gsub("%z", "\n"))
+  end
 end
 
 function M.parse(file, opts)
@@ -222,9 +280,9 @@ local function parse_preamble_recursive(file, root, parsed_files)
   end
   parsed_files[file] = true
   local lines = {}
-  for _, line in ipairs(util.readfile(file)) do
+  read_lines_until(file, function(line)
     local has_command = line:find("\\", 1, true) ~= nil
-    if has_command and matches(line, vim.g["vimtex#re#tex_input"]) then
+    if may_include(line) and matches(line, vim.g["vimtex#re#tex_input"]) then
       local result = M.input_parser(line, file, root)
       vim.list_extend(
         lines,
@@ -234,9 +292,9 @@ local function parse_preamble_recursive(file, root, parsed_files)
       lines[#lines + 1] = line
     end
     if has_command and line:find "\\begin%s*{document}" then
-      break
+      return false
     end
-  end
+  end)
   return lines
 end
 
@@ -246,7 +304,7 @@ function M.parse_preamble(file, opts)
     persistent = false,
     default = { time = -2 },
   })
-  local current = store:get(file)
+  local current = store:get(opts.root .. "\0" .. file)
   local timestamp = get_mtime(file)
   if timestamp > current.time then
     current.time = timestamp
