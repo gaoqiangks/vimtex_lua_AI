@@ -748,7 +748,7 @@ function M.init_buffer()
     return
   end
   ensure_command_cache_invalidation()
-  vim.bo.omnifunc = "v:lua.require'vimtex.complete'.omnifunc"
+  vim.bo.omnifunc = "vimtex#complete#omnifunc"
 end
 
 return M

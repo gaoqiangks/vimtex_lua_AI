@@ -48,7 +48,7 @@ local disabled_mappings = {}
 
 local function init_lazy_modules(disabled)
   if not disabled.complete and module_enabled "complete" then
-    vim.bo.omnifunc = "v:lua.require'vimtex.complete'.omnifunc"
+    vim.bo.omnifunc = "vimtex#complete#omnifunc"
   end
   if not disabled.format and module_enabled "format" then
     vim.bo.formatexpr = "v:lua.require('vimtex.format').formatexpr()"

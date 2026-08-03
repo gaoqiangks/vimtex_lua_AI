@@ -11,6 +11,8 @@ silent edit test1.tex
 
 if empty($INMAKE) | finish | endif
 
+call assert_equal('vimtex#complete#omnifunc', &l:omnifunc)
+
 let s:candidates = v:lua.require('vimtex.test').completion('\ref{', '')
 call assert_equal(24, len(s:candidates))
 
