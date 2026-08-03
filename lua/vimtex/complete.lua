@@ -691,6 +691,26 @@ local order = {
   "bst",
 }
 
+local function custom_patterns(name)
+  local config = name == "bib" and vim.g.vimtex_complete_bib
+    or name == "ref" and vim.g.vimtex_complete_ref
+  return type(config) == "table" and config.custom_patterns or nil
+end
+
+local function matches_completer(name, completer, line)
+  for _, pattern in ipairs(completer.patterns) do
+    if matches(line, pattern, false) then
+      return true
+    end
+  end
+  for _, pattern in ipairs(custom_patterns(name) or {}) do
+    if matches(line, pattern, false) then
+      return true
+    end
+  end
+  return false
+end
+
 local function close_braces(candidates)
   if not vim.fn.getline("."):sub(vim.fn.col "."):match "^%s*[,}]" then
     for _, candidate in ipairs(candidates) do
@@ -708,23 +728,21 @@ function M.omnifunc(findstart, base)
     local line = vim.fn.getline("."):sub(1, position)
     for _, name in ipairs(order) do
       local completer = completers[name]
-      for _, pattern in ipairs(completer.patterns) do
-        if matches(line, pattern, false) then
-          active = completer
-          while position > 0 do
-            local previous = line:sub(position, position)
-            if
-              previous:match "[{,%[\\]"
-              or line:sub(position - 1, position) == ", "
-            then
-              completer.context =
-                vim.fn.matchstr(line, completer.re_context or [=[\S*$]=])
-              return position
-            end
-            position = position - 1
+      if matches_completer(name, completer, line) then
+        active = completer
+        while position > 0 do
+          local previous = line:sub(position, position)
+          if
+            previous:match "[{,%[\\]"
+            or line:sub(position - 1, position) == ", "
+          then
+            completer.context =
+              vim.fn.matchstr(line, completer.re_context or [=[\S*$]=])
+            return position
           end
-          return -2
+          position = position - 1
         end
+        return -2
       end
     end
     return -3

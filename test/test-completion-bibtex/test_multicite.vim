@@ -6,6 +6,9 @@ nnoremap q :qall!<cr>
 
 let g:vimtex_cache_root = '.'
 let g:vimtex_cache_persistent = 0
+let g:vimtex_complete_bib = {
+      \ 'custom_patterns': ['\\mycite{[^}]*$'],
+      \}
 
 silent edit test_multicite.tex
 
@@ -14,6 +17,9 @@ if empty($INMAKE) | finish | endif
 let s:candidates = v:lua.require('vimtex.test').completion(
             \ '\cites(multipre)(multipost)[pre][post]{knuth1981}[pre][post]{',
             \ '')
+call assert_true(len(s:candidates) > 0)
+
+let s:candidates = v:lua.require('vimtex.test').completion('\mycite{', '')
 call assert_true(len(s:candidates) > 0)
 
 call v:lua.require('vimtex.test').finished()
