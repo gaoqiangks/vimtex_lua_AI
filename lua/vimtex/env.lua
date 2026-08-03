@@ -122,8 +122,8 @@ end
 
 local function split_line(delimiter)
   local line = vim.fn.getline(delimiter.lnum)
-  return vim.fn.strpart(line, 0, delimiter.cnum - 1),
-    vim.fn.strpart(line, delimiter.cnum + #delimiter.match - 1)
+  return line:sub(1, delimiter.cnum - 1),
+    line:sub(delimiter.cnum + #delimiter.match)
 end
 
 function M.change_in_place(opening, closing, replacement)
@@ -145,12 +145,7 @@ function M.change_to_inline_math(opening, closing, replacement)
   if (before .. after):match "^%s*$" then
     vim.fn.setline(
       closing.lnum - 1,
-      vim.fn.substitute(
-        vim.fn.getline(closing.lnum - 1),
-        [[\s*$]],
-        replacement[2],
-        ""
-      )
+      (vim.fn.getline(closing.lnum - 1):gsub("%s*$", replacement[2]))
     )
     vim.cmd(closing.lnum .. "delete _")
     local nextline = vim.trim(vim.fn.getline(closing.lnum))
@@ -160,12 +155,8 @@ function M.change_to_inline_math(opening, closing, replacement)
   elseif before:match "^%s*$" then
     vim.fn.setline(
       closing.lnum - 1,
-      vim.fn.substitute(
-        vim.fn.getline(closing.lnum - 1),
-        [[\s*$]],
-        replacement[2],
-        ""
-      ) .. after:gsub("^%s*", " ")
+      vim.fn.getline(closing.lnum - 1):gsub("%s*$", replacement[2])
+        .. after:gsub("^%s*", " ")
     )
     vim.cmd(closing.lnum .. "delete _")
   else
@@ -397,17 +388,26 @@ function M.is_inside(environment)
 end
 
 function M.input_complete(lead)
-  local candidates = vim.tbl_map(function(item)
-    return item.word
-  end, require("vimtex.complete").complete("env", "", "\\begin"))
-  candidates = vim.tbl_filter(function(item)
-    return item ~= "document" and item ~= completion_environment
-  end, candidates)
-  table.insert(candidates, 1, completion_environment)
-  table.insert(candidates, "\\[")
-  return vim.tbl_filter(function(item)
-    return vim.startswith(item, lead)
-  end, candidates)
+  local result = {}
+  if vim.startswith(completion_environment, lead) then
+    result[#result + 1] = completion_environment
+  end
+  for _, item in
+    ipairs(require("vimtex.complete").complete("env", "", "\\begin"))
+  do
+    local word = item.word
+    if
+      word ~= "document"
+      and word ~= completion_environment
+      and vim.startswith(word, lead)
+    then
+      result[#result + 1] = word
+    end
+  end
+  if vim.startswith("\\[", lead) then
+    result[#result + 1] = "\\["
+  end
+  return result
 end
 
 local function prompt(kind)

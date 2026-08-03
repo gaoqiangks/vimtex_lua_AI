@@ -132,7 +132,14 @@ function base._remove_dir(self, directory)
     return
   end
   local files = vim.fn.glob(root .. "/**/*", false, true)
-  if not vim.tbl_contains(vim.tbl_map(vim.fn.filereadable, files), 1) then
+  local has_readable_file = false
+  for _, file in ipairs(files) do
+    if vim.fn.filereadable(file) == 1 then
+      has_readable_file = true
+      break
+    end
+  end
+  if not has_readable_file then
     table.sort(files, function(a, b)
       return #a > #b
     end)
@@ -331,9 +338,11 @@ local function parse_rc_value(value, kind)
   if kind == 1 then
     return tonumber(value)
   elseif kind == 2 then
-    return vim.tbl_map(function(entry)
-      return vim.trim(entry):gsub("^'", ""):gsub("'$", "")
-    end, vim.split(value, ","))
+    local entries = {}
+    for entry in (value .. ","):gmatch "(.-)," do
+      entries[#entries + 1] = vim.trim(entry):gsub("^'", ""):gsub("'$", "")
+    end
+    return entries
   end
   return value
 end

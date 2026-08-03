@@ -18,11 +18,18 @@ function M.get_key(command, current_word)
   end
 
   current_word = current_word or vim.fn.expand "<cword>"
-  local texts = vim.tbl_map(function(argument)
-    return argument.text
-  end, command.args)
-  local cites = vim.split(table.concat(texts, ","), ",%s*")
-  return vim.list_contains(cites, current_word) and current_word or cites[1]
+  local cites = {}
+  for _, argument in ipairs(command.args) do
+    for key in (argument.text .. ","):gmatch "(.-),%s*" do
+      cites[#cites + 1] = key
+    end
+  end
+  for _, key in ipairs(cites) do
+    if key == current_word then
+      return current_word
+    end
+  end
+  return cites[1] or ""
 end
 
 function M.get_entry(key)

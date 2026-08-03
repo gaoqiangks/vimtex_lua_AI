@@ -121,10 +121,22 @@ function M.setqflist(file)
     )
   end
   local list = vim.fn.getqflist()
-  for _, regex in ipairs(vim.g.vimtex_quickfix_ignore_filters or {}) do
-    list = vim.tbl_filter(function(entry)
-      return vim.fn.match(entry.text, regex) < 0
-    end, list)
+  local filters = vim.g.vimtex_quickfix_ignore_filters or {}
+  if #filters > 0 then
+    local filtered = {}
+    for _, entry in ipairs(list) do
+      local ignored = false
+      for _, regex in ipairs(filters) do
+        if vim.fn.match(entry.text, regex) >= 0 then
+          ignored = true
+          break
+        end
+      end
+      if not ignored then
+        filtered[#filtered + 1] = entry
+      end
+    end
+    list = filtered
   end
   for index, entry in ipairs(list) do
     entry._vimtex_index = index

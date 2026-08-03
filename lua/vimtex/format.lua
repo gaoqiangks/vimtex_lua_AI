@@ -59,7 +59,7 @@ local function format_range(first, last)
       and syntax.in_mathzone(current, vim.fn.col { current, "$" })
     then
       mark = current - 1
-    elseif vim.fn.match(line, [[\v%(^|[^\\])\%]]) >= 0 then
+    elseif line:sub(1, 1) == "%" or line:find "[^\\]%%" then
       if current < mark then
         bottom = bottom + build_lines(current + 1, mark)
       end

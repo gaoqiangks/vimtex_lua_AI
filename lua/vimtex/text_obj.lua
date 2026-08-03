@@ -36,6 +36,10 @@ local function normal(keys)
   vim.cmd("normal! " .. keys)
 end
 
+local function copy_position(position)
+  return { lnum = position.lnum, cnum = position.cnum }
+end
+
 local function update_visual_marks()
   local first, last = vim.fn.getpos "v", vim.fn.getcurpos()
   if first[2] > last[2] or (first[2] == last[2] and first[3] > last[3]) then
@@ -86,8 +90,8 @@ function M.commands(inner, visual)
     if vim.tbl_isempty(command) then
       break
     end
-    local first = { unpack(command.pos_start) }
-    local last = { unpack(command.pos_end) }
+    local first = copy_position(command.pos_start)
+    local last = copy_position(command.pos_end)
     if inner then
       last.lnum = first.lnum
       last.cnum = first.cnum + #command.name - 1
@@ -105,7 +109,8 @@ function M.commands(inner, visual)
         break
       end
       if pos.smaller(old, command.pos_end) then
-        first, last = { unpack(command.pos_start) }, { unpack(command.pos_end) }
+        first, last =
+          copy_position(command.pos_start), copy_position(command.pos_end)
         if inner then
           last.lnum = first.lnum
           last.cnum = first.cnum + #command.name - 1
@@ -161,12 +166,11 @@ local function selection_delimited(opening, closing, inner)
     end
     c2 = c2 - 1
     inline = l2 - l1 > 1
-      and vim.fn.match(vim.fn.strpart(vim.fn.getline(l1), c1), [[^\s*$]]) >= 0
-      and vim.fn.match(vim.fn.strpart(vim.fn.getline(l2), 0, c2), [[^\s*$]])
-        >= 0
+      and vim.fn.getline(l1):sub(c1 + 1):match "^%s*$" ~= nil
+      and vim.fn.getline(l2):sub(1, c2):match "^%s*$" ~= nil
     if inline then
       l1 = l1 + 1
-      c1 = #vim.fn.matchstr(vim.fn.getline(l1), [[^\s*]]) + 1
+      c1 = #(vim.fn.getline(l1):match "^%s*" or "") + 1
       l2 = l2 - 1
       c2 = #vim.fn.getline(l2)
       if c2 == 0 and not linewise then
@@ -178,9 +182,8 @@ local function selection_delimited(opening, closing, inner)
   else
     c2 = c2 + #closing.match - 1
     inline = l2 - l1 > 1
-      and vim.fn.match(vim.fn.strpart(vim.fn.getline(l1), 0, c1 - 1), [[^\s*$]]) >= 0
-      and vim.fn.match(vim.fn.strpart(vim.fn.getline(l2), 0, c2), [[^\s*$]])
-        >= 0
+      and vim.fn.getline(l1):sub(1, c1 - 1):match "^%s*$" ~= nil
+      and vim.fn.getline(l2):sub(1, c2):match "^%s*$" ~= nil
   end
   return {
     open = opening,

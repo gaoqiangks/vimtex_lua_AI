@@ -111,23 +111,18 @@ local parser = pc.many1(pc.right {
   g.whitespaces_maybe,
   pc.choice { entry, comment },
 }):map(function(results)
-  local string_map = {}
-  for _, bibstr in
-    ipairs(vim.tbl_filter(function(e)
-      return e.type == "string"
-    end, results))
-  do
-    for key, value in pairs(bibstr) do
-      if key ~= "type" then
-        string_map[key] = value
+  local string_map, references = {}, {}
+  for _, parsed in ipairs(results) do
+    if parsed.type == "string" then
+      for key, value in pairs(parsed) do
+        if key ~= "type" then
+          string_map[key] = value
+        end
       end
+    elseif parsed.type ~= "comment" and parsed.type ~= "preamble" then
+      references[#references + 1] = parsed
     end
   end
-
-  ---@type BibReference[]
-  local references = vim.tbl_filter(function(e)
-    return e.type ~= "string" and e.type ~= "comment" and e.type ~= "preamble"
-  end, results)
 
   for string_name, string_value in pairs(string_map) do
     for _, reference in ipairs(references) do

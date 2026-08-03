@@ -352,8 +352,7 @@ local function parse_math(context)
   result.gms_flags, result.gms_stopline = bounds(open)
   if vim.fn.match(context.match, "^" .. M.re.mods.both) >= 0 then
     local m1 = vim.fn.matchstr(context.match, "^" .. M.re.mods.both)
-    local d1 =
-      vim.fn.substitute(vim.fn.strpart(context.match, #m1), [[^\s*]], "", "")
+    local d1 = context.match:sub(#m1 + 1):gsub("^%s*", "")
     local s1 = open and 0 or 1
     local re1 = re_for(m1, s1, "mods")
       .. [[\s*]]
@@ -762,16 +761,16 @@ function M.toggle_modifier(args)
   local line = vim.fn.getline(opening.lnum)
   vim.fn.setline(
     opening.lnum,
-    vim.fn.strpart(line, 0, opening.cnum - 1)
+    line:sub(1, opening.cnum - 1)
       .. replacement[1]
-      .. vim.fn.strpart(line, opening.cnum + #(opening.mod or "") - 1)
+      .. line:sub(opening.cnum + #(opening.mod or ""))
   )
   line = vim.fn.getline(closing.lnum)
   vim.fn.setline(
     closing.lnum,
-    vim.fn.strpart(line, 0, closing_column - 1)
+    line:sub(1, closing_column - 1)
       .. replacement[2]
-      .. vim.fn.strpart(line, closing_column + #(closing.mod or "") - 1)
+      .. line:sub(closing_column + #(closing.mod or ""))
   )
   pos.set_cursor(cursor)
   return replacement
@@ -796,9 +795,9 @@ function M.change_with_args(opening, closing, new)
   local line = vim.fn.getline(opening.lnum)
   vim.fn.setline(
     opening.lnum,
-    vim.fn.strpart(line, 0, opening.cnum - 1)
+    line:sub(1, opening.cnum - 1)
       .. first
-      .. vim.fn.strpart(line, opening.cnum + #opening.match - 1)
+      .. line:sub(opening.cnum + #opening.match)
   )
   local c1, c2 = closing.cnum, closing.cnum + #closing.match - 1
   if opening.lnum == closing.lnum then
@@ -811,10 +810,7 @@ function M.change_with_args(opening, closing, new)
     end
   end
   line = vim.fn.getline(closing.lnum)
-  vim.fn.setline(
-    closing.lnum,
-    vim.fn.strpart(line, 0, c1 - 1) .. last .. vim.fn.strpart(line, c2)
-  )
+  vim.fn.setline(closing.lnum, line:sub(1, c1 - 1) .. last .. line:sub(c2 + 1))
 end
 
 function M.change(new)
@@ -929,16 +925,12 @@ function M.add_modifiers()
       local line = vim.fn.getline(closing.lnum)
       vim.fn.setline(
         closing.lnum,
-        vim.fn.strpart(line, 0, closing.cnum - 1)
-          .. [[\right]]
-          .. vim.fn.strpart(line, closing.cnum - 1)
+        line:sub(1, closing.cnum - 1) .. [[\right]] .. line:sub(closing.cnum)
       )
       line = vim.fn.getline(opening.lnum)
       vim.fn.setline(
         opening.lnum,
-        vim.fn.strpart(line, 0, opening.cnum - 1)
-          .. [[\left]]
-          .. vim.fn.strpart(line, opening.cnum - 1)
+        line:sub(1, opening.cnum - 1) .. [[\left]] .. line:sub(opening.cnum)
       )
       cursor[3] = cursor[3] + 5
     end

@@ -1,5 +1,12 @@
 local M = {}
 local paths = require "vimtex.paths"
+local tex_extensions = {
+  tex = true,
+  latex = true,
+  dtx = true,
+  tikz = true,
+  ins = true,
+}
 
 function M.parse_optionlist(text)
   local options = vim.empty_dict()
@@ -324,12 +331,7 @@ function M.new(options)
     base = base,
     name = vim.fn.fnamemodify(opts.main, ":t:r"),
     main_parser = opts.main_parser,
-    tex = (
-      vim.tbl_contains({ "tex", "latex" }, extension)
-      or vim.tbl_contains({ "dtx", "tikz", "ins" }, extension)
-    )
-        and paths.join(root, base)
-      or "",
+    tex = tex_extensions[extension] and paths.join(root, base) or "",
   }
   for name, method in pairs(methods) do
     self[name] = function(...)
@@ -355,23 +357,20 @@ function M.new(options)
   self.packages = M.parse_packages(joined)
   self.graphicspath = M.parse_graphicspath(joined, root)
   self.glossaries = M.parse_glossaries(preamble, root, self.packages)
-  local unsupported = opts.unsupported_modules
-  if
-    vim.g.vimtex_compiler_enabled ~= 0
-    and not vim.tbl_contains(unsupported, "compiler")
-  then
+  local unsupported = {}
+  for _, name in ipairs(opts.unsupported_modules) do
+    unsupported[name] = true
+  end
+  if vim.g.vimtex_compiler_enabled ~= 0 and not unsupported.compiler then
     require("vimtex.compiler").init_state(self)
   end
-  if
-    vim.g.vimtex_view_enabled ~= 0
-    and not vim.tbl_contains(unsupported, "view")
-  then
+  if vim.g.vimtex_view_enabled ~= 0 and not unsupported.view then
     require("vimtex.view").init_state(self)
   end
-  if not vim.tbl_contains(unsupported, "qf") then
+  if not unsupported.qf then
     self.qf = require("vimtex.qf").new()
   end
-  if not vim.tbl_contains(unsupported, "toc") then
+  if not unsupported.toc then
     self.toc = require("vimtex.toc").new()
   end
   self.context_menu = { "cite", "glossaries" }

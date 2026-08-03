@@ -195,18 +195,26 @@ local function complete_ref(regex, context)
       table.insert(labels, label)
     end
   end
-  local result = vim.tbl_filter(function(label)
-    return matches(label.menu or "", regex, false)
-  end, labels)
+  local result = {}
+  for _, label in ipairs(labels) do
+    if matches(label.menu or "", regex, false) then
+      result[#result + 1] = label
+    end
+  end
   if #result == 0 then
-    result = vim.tbl_filter(function(label)
-      return matches(label.word, regex, false)
-    end, labels)
+    for _, label in ipairs(labels) do
+      if matches(label.word, regex, false) then
+        result[#result + 1] = label
+      end
+    end
   end
   if context:find "\\eqref" then
-    local equations = vim.tbl_filter(function(label)
-      return label.word:match "^eq:"
-    end, result)
+    local equations = {}
+    for _, label in ipairs(result) do
+      if label.word:match "^eq:" then
+        equations[#equations + 1] = label
+      end
+    end
     if #equations > 0 then
       result = equations
     end
@@ -577,9 +585,7 @@ local order = {
 }
 
 local function close_braces(candidates)
-  if
-    not vim.fn.strpart(vim.fn.getline ".", vim.fn.col "." - 1):match "^%s*[,}]"
-  then
+  if not vim.fn.getline("."):sub(vim.fn.col "."):match "^%s*[,}]" then
     for _, candidate in ipairs(candidates) do
       candidate.abbr = candidate.abbr or candidate.word
       candidate.word = candidate.word:gsub("}*$", "}")

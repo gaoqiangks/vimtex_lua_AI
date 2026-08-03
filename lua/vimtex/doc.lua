@@ -125,7 +125,7 @@ local function remove_invalid(context)
   if context.type == "tikzlibrary" then
     return
   end
-  local invalid = {}
+  local invalid, invalid_set = {}, {}
   for _, package in ipairs(context.candidates) do
     if
       package ~= "latex2e"
@@ -134,6 +134,7 @@ local function remove_invalid(context)
       and require("vimtex.kpsewhich").find(package .. ".cls") == ""
     then
       table.insert(invalid, package)
+      invalid_set[package] = true
     end
   end
   if #invalid > 0 then
@@ -147,13 +148,15 @@ local function remove_invalid(context)
         )
     )
   end
-  context.candidates = vim.tbl_filter(function(x)
-    return not vim.tbl_contains(invalid, x)
-  end, context.candidates)
-  if
-    context.selected
-    and not vim.tbl_contains(context.candidates, context.selected)
-  then
+  local valid, selected_valid = {}, false
+  for _, candidate in ipairs(context.candidates) do
+    if not invalid_set[candidate] then
+      valid[#valid + 1] = candidate
+      selected_valid = selected_valid or candidate == context.selected
+    end
+  end
+  context.candidates = valid
+  if context.selected and not selected_valid then
     context.selected = nil
   end
 end

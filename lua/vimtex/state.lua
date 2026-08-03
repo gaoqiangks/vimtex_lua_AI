@@ -67,23 +67,26 @@ local function choose(candidates)
   elseif #candidates == 1 then
     return candidates[1]
   end
-  local existing, new = {}, {}
+  local existing, existing_count, new = {}, 0, {}
   for _, candidate in ipairs(candidates) do
     local id = get_main_id(candidate)
     if id >= 0 then
+      if existing[id] == nil then
+        existing_count = existing_count + 1
+      end
       existing[id] = candidate
     else
       table.insert(new, candidate)
     end
   end
-  if vim.tbl_count(existing) == 1 then
+  if existing_count == 1 then
     local _, value = next(existing)
     return value
   end
   local alternate = vim.fn.getbufvar(vim.fn.bufnr "#", "vimtex_id", -1)
   if existing[alternate] then
     return existing[alternate]
-  elseif vim.tbl_count(existing) == 0 and #new == 1 then
+  elseif existing_count == 0 and #new == 1 then
     return new[1]
   elseif vim.g.vimtex_main_choose_first == 1 then
     return candidates[1]

@@ -34,7 +34,7 @@ local function parse_input(filename, kind)
     return filename
   end
   local command = require("vimtex.cmd").get_at(position[1], position[2])
-  if vim.fn.empty(command) == 1 then
+  if next(command) == nil then
     return filename
   end
   local parts = {}
@@ -55,7 +55,7 @@ local function parse_package(filename)
     return filename
   end
   local command = require("vimtex.cmd").get_at(position[1], position[2])
-  if vim.fn.empty(command) == 1 then
+  if next(command) == nil then
     return filename
   end
   local index = command.name:find("PassOptionsTo", 1, true) and 2 or 1
@@ -84,16 +84,25 @@ local function search_texinputs(filename)
 end
 
 local function search_kpsewhich(filename)
-  local files = vim.fn.split(filename, [[\s*,\s*]])
+  local files = {}
+  for file in filename:gmatch "[^,]+" do
+    files[#files + 1] = vim.trim(file)
+  end
   local current = vim.fn.expand "<cword>"
-  local index = vim.fn.index(files, current)
-  if index >= 0 then
-    table.remove(files, index + 1)
+  local current_index
+  for index, file in ipairs(files) do
+    if file == current then
+      current_index = index
+      break
+    end
+  end
+  if current_index then
+    table.remove(files, current_index)
     table.insert(files, 1, current)
   end
   local candidates = {}
   for _, file in ipairs(files) do
-    if vim.fn.fnamemodify(file, ":e") ~= "" then
+    if file:match "[^/\\]%.([^./\\]+)$" then
       candidates[#candidates + 1] = file
     else
       for _, suffix in

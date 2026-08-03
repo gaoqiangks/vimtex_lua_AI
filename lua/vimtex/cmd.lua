@@ -183,9 +183,7 @@ function M.change(new_name)
   local text = vim.fn.getline(line)
   vim.fn.setline(
     line,
-    vim.fn.strpart(text, 0, column)
-      .. new_name
-      .. vim.fn.strpart(text, column + #command.name - 1)
+    text:sub(1, column) .. new_name .. text:sub(column + #command.name)
   )
   if #new_name < #command.name and cursor[3] > column + #new_name then
     cursor[3] = column + #new_name
@@ -206,16 +204,12 @@ function M.delete(...)
     local text = vim.fn.getline(closing.lnum)
     vim.fn.setline(
       closing.lnum,
-      vim.fn.strpart(text, 0, closing.cnum - 1)
-        .. vim.fn.strpart(text, closing.cnum)
+      text:sub(1, closing.cnum - 1) .. text:sub(closing.cnum + 1)
     )
     finish = command.args[1].open.cnum
   end
   local text = vim.fn.getline(line)
-  vim.fn.setline(
-    line,
-    vim.fn.strpart(text, 0, column - 1) .. vim.fn.strpart(text, finish)
-  )
+  vim.fn.setline(line, text:sub(1, column - 1) .. text:sub(finish + 1))
   if cursor[2] == line then
     cursor[3] = cursor[3]
       - (
@@ -251,8 +245,8 @@ function M.create_insert()
     require("vimtex.log").warning "Could not create command"
     return ""
   end
-  local prefix = vim.fn.strpart(match, 0, column - start)
-  local suffix = vim.fn.strpart(match, column - start)
+  local prefix = match:sub(1, column - start)
+  local suffix = match:sub(column - start + 1)
   local suffix_length = finish - column
   local delete_suffix = suffix_length > 0 and ("\15" .. suffix_length .. "x")
     or ""
@@ -358,9 +352,7 @@ function M.toggle_star()
     vim.fn.getline(command.pos_start.lnum), command.pos_start.cnum
   vim.fn.setline(
     command.pos_start.lnum,
-    vim.fn.strpart(line, 0, column)
-      .. name
-      .. vim.fn.strpart(line, column + #command.name - 1)
+    line:sub(1, column) .. name .. line:sub(column + #command.name)
   )
   pos.set_cursor(cursor)
 end
@@ -451,7 +443,7 @@ local function command_fraction()
     )
   local line = vim.fn.getline "."
   for _, key in ipairs(consume) do
-    local part = vim.fn.strpart(line, fraction.col_end + 1)
+    local part = line:sub(fraction.col_end + 2)
     local found = vim.fn.matchstr(part, [[^\s*{[^}]*}]])
     if found ~= "" then
       fraction[key] = vim.trim(found):sub(2, -2)
@@ -541,9 +533,9 @@ function M.toggle_frac()
   local line = vim.fn.getline "."
   vim.fn.setline(
     ".",
-    vim.fn.strpart(line, 0, fraction.col_start)
+    line:sub(1, fraction.col_start)
       .. fraction.text_toggled
-      .. vim.fn.strpart(line, fraction.col_end + 1)
+      .. line:sub(fraction.col_end + 2)
   )
 end
 function M.toggle_frac_visual()
@@ -606,10 +598,10 @@ function M.toggle_frac_visual()
 end
 function M.toggle_break()
   local line = vim.fn.getline "."
-  if vim.fn.match(line, [[\s*\\\\\s*$]]) >= 0 then
-    line = vim.fn.substitute(line, [[\s*\\\\\s*$]], "", "")
+  if line:find "%s*\\\\%s*$" then
+    line = line:gsub("%s*\\\\%s*$", "")
   else
-    line = vim.fn.substitute(line, [[\s*$]], [[ \\\\]], "")
+    line = line:gsub("%s*$", " \\\\")
   end
   vim.fn.setline(".", line)
 end
