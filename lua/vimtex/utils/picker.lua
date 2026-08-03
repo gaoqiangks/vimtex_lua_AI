@@ -5,17 +5,19 @@ local M = {}
 ---@param n table The TOC entry
 ---@return string number
 M.format_number = function(n)
-  local num = {
-    n.chapter ~= 0 and n.chapter or nil,
-    n.section ~= 0 and n.section or nil,
-    n.subsection ~= 0 and n.subsection or nil,
-    n.subsubsection ~= 0 and n.subsubsection or nil,
-    n.subsubsubsection ~= 0 and n.subsubsubsection or nil,
-  }
-  num = vim.tbl_filter(function(t)
-    return t ~= nil
-  end, num)
-  if vim.tbl_isempty(num) then
+  local num = {}
+  for _, value in ipairs {
+    n.chapter,
+    n.section,
+    n.subsection,
+    n.subsubsection,
+    n.subsubsubsection,
+  } do
+    if value ~= 0 then
+      num[#num + 1] = value
+    end
+  end
+  if #num == 0 then
     return ""
   end
 
@@ -24,10 +26,9 @@ M.format_number = function(n)
     num[1] = string.char(num[1] + 64)
   end
 
-  num = vim.tbl_map(function(t)
-    return string.format(t)
-  end, num)
-
+  for index, value in ipairs(num) do
+    num[index] = tostring(value)
+  end
   return table.concat(num, ".")
 end
 

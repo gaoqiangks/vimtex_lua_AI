@@ -49,6 +49,7 @@ local function module_enabled(name)
 end
 
 local buffer_ids = {}
+local disabled_mappings = {}
 
 local function init_filetype()
   vim.bo.comments = "sO:% -,mO:%  ,eO:%%,:%"
@@ -105,9 +106,7 @@ local function map(mode, lhs, rhs, tex_only, force)
   if tex_only and vim.bo.filetype ~= "tex" then
     return
   end
-  if
-    vim.tbl_contains((vim.g.vimtex_mappings_disable or {})[mode] or {}, lhs)
-  then
+  if disabled_mappings[mode] and disabled_mappings[mode][lhs] then
     return
   end
   if vim.fn.hasmapto(rhs, mode) == 1 then
@@ -135,6 +134,14 @@ end
 local function mappings()
   if vim.g.vimtex_mappings_enabled == 0 then
     return
+  end
+  disabled_mappings = {}
+  for mode, mappings_disabled in pairs(vim.g.vimtex_mappings_disable or {}) do
+    local lookup = {}
+    for _, lhs in ipairs(mappings_disabled) do
+      lookup[lhs] = true
+    end
+    disabled_mappings[mode] = lookup
   end
   for _, item in ipairs {
     { "i", "<plug>(vimtex-info)" },

@@ -1,5 +1,9 @@
 local M = {}
 
+local function copy_list(list)
+  return { unpack(list or {}) }
+end
+
 local function generated_regex(list)
   local opening, closing = {}, {}
   for _, pair in ipairs(list.re) do
@@ -85,7 +89,7 @@ local function initialize()
         return vim.tbl_map(function(value)
           return vim.fn.escape(value, "\\$[]")
         end, pair)
-      end, vim.deepcopy(list.name))
+      end, list.name)
     end
   end
   for _, key in ipairs { "name", "re" } do
@@ -93,11 +97,11 @@ local function initialize()
     lists.delim_all = lists.delim_all or {}
     lists.all = lists.all or {}
     lists.env_all[key] =
-      vim.list_extend(vim.deepcopy(lists.env_tex[key]), lists.env_math[key])
+      vim.list_extend(copy_list(lists.env_tex[key]), lists.env_math[key])
     lists.delim_all[key] =
-      vim.list_extend(vim.deepcopy(lists.delim_math[key]), lists.delim_tex[key])
+      vim.list_extend(copy_list(lists.delim_math[key]), lists.delim_tex[key])
     lists.all[key] =
-      vim.list_extend(vim.deepcopy(lists.env_all[key]), lists.delim_all[key])
+      vim.list_extend(copy_list(lists.env_all[key]), lists.delim_all[key])
   end
 
   local re = { env_all = {}, delim_all = {}, all = {} }

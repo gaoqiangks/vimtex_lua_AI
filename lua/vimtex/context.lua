@@ -1,7 +1,7 @@
 local M = {}
 
 local function show_entry(entry)
-  local copy = vim.deepcopy(entry)
+  local copy = vim.tbl_extend("force", {}, entry)
   require("vimtex.ui").echo {
     { "Normal", "@" },
     { "VimtexMsg", copy.type },

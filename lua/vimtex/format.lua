@@ -27,15 +27,18 @@ local function build_lines(first, last)
   end
   local prefix = indents(vim.fn.indent(first))
   local current = prefix
+  local prefix_width = vim.fn.strdisplaywidth(prefix)
+  local current_width = prefix_width
   local replacement = {}
   for _, word in ipairs(words) do
-    if
-      vim.fn.strdisplaywidth(word) + vim.fn.strdisplaywidth(current) > textwidth
-    then
+    local word_width = vim.fn.strdisplaywidth(word)
+    if word_width + current_width > textwidth then
       replacement[#replacement + 1] = current:gsub("%s$", "")
       current = prefix
+      current_width = prefix_width
     end
     current = current .. word .. " "
+    current_width = current_width + word_width + 1
   end
   if not current:match "^%s*$" then
     replacement[#replacement + 1] = current:gsub("%s$", "")

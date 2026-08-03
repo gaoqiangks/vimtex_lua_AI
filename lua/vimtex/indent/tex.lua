@@ -24,8 +24,20 @@ end
 local function in_verbatim(line_number)
   local column = vim.fn.col { line_number, "$" } - 2
   local stack = syntax.stack(line_number, column)
-  return vim.fn.match(stack, [[\v^tex%(Lst|Verb|Markdown|Minted)Zone]]) >= 0
-    and vim.fn.match(stack, [[\v^tex%(Minted)?Env]]) < 0
+  local zone, environment = false, false
+  for _, group in ipairs(stack) do
+    if
+      group:match "^texLstZone"
+      or group:match "^texVerbZone"
+      or group:match "^texMarkdownZone"
+      or group:match "^texMintedZone"
+    then
+      zone = true
+    elseif group:match "^texEnv" or group:match "^texMintedEnv" then
+      environment = true
+    end
+  end
+  return zone and not environment
 end
 
 local function previous_line(line_number)
@@ -262,7 +274,14 @@ local function indent_tikz(config, line_number, previous)
   then
     return 0
   end
-  if vim.fn.match(syntax.stack(line_number, 1), "^texTikzZone") < 0 then
+  local in_tikz = false
+  for _, group in ipairs(syntax.stack(line_number, 1)) do
+    if group:match "^texTikzZone" then
+      in_tikz = true
+      break
+    end
+  end
+  if not in_tikz then
     return 0
   end
   local environment = vim.fn.search([[\\begin\s*{tikzpicture\*\?}]], "bn")

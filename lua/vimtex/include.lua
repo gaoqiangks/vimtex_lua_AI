@@ -1,20 +1,24 @@
 local M = {}
 
-local visited = { time = 0, list = {} }
+local visited = { time = 0, list = {}, set = {} }
 local command_pattern =
   [[\v\s*\\%(documentclass|LoadClass|usepackage|RequirePackage|PassOptionsToClass|PassOptionsToPackage)]]
 
 local function timeout()
-  if os.time() - visited.time > 1 then
-    visited.time = os.time()
-    visited.list = { vim.fn.expand "%:p" }
+  local now = os.time()
+  if now - visited.time > 1 then
+    local current = vim.api.nvim_buf_get_name(0)
+    visited.time = now
+    visited.list = { current }
+    visited.set = { [current] = true }
   end
 end
 
 local function check(file)
   local absolute = vim.fn.fnamemodify(file, ":p")
-  if not vim.list_contains(visited.list, absolute) then
+  if not visited.set[absolute] then
     visited.list[#visited.list + 1] = absolute
+    visited.set[absolute] = true
     return file
   end
   return ""

@@ -380,15 +380,41 @@ function M.shellescape(command)
 end
 
 function M.tex2unicode(line)
-  for _, pair in ipairs(unicode_pairs) do
-    line = vim.fn.substitute(line, pair[1], pair[2], "g")
+  local has_iec = line:find("\\IeC", 1, true) ~= nil
+  local has_accent = line:find('\\"', 1, true)
+    or line:find("\\'", 1, true)
+    or line:find("\\=", 1, true)
+    or line:find("\\H", 1, true)
+    or line:find("\\~", 1, true)
+    or line:find("\\tilde", 1, true)
+    or line:find("\\.", 1, true)
+    or line:find("\\^", 1, true)
+    or line:find("\\`", 1, true)
+    or line:find "\\c[CEGKLNRSTcegklnrst]"
+    or line:find "\\k[AEIOUaeiosu]"
+    or line:find "\\o[^%a]"
+    or line:find("\\o$", 1, false)
+    or line:find "\\r[AUau]"
+    or line:find "\\u[AEGIOUaegiou\\]"
+    or line:find "\\v[ACDEGHIJKLNORSTUZacdeghiklnorstuvz]"
+    or line:find("\\¨", 1, true)
+  if not has_accent then
+    if not has_iec then
+      return line
+    end
+  else
+    for _, pair in ipairs(unicode_pairs) do
+      line = vim.fn.substitute(line, pair[1], pair[2], "g")
+    end
   end
-  return vim.fn.substitute(
-    line,
-    [[\C\\IeC\s*{\s*\([^}]\{-}\)\s*}]],
-    [[\1]],
-    "g"
-  )
+  return has_iec
+      and vim.fn.substitute(
+        line,
+        [[\C\\IeC\s*{\s*\([^}]\{-}\)\s*}]],
+        [[\1]],
+        "g"
+      )
+    or line
 end
 
 function M.tex2tree(text)
@@ -439,7 +465,9 @@ end
 function M.uniq_unsorted(list)
   local result, seen = {}, {}
   for _, value in ipairs(list) do
-    local key = vim.inspect(value)
+    local value_type = type(value)
+    local key = value_type == "table" and vim.inspect(value)
+      or value_type .. "\0" .. tostring(value)
     if not seen[key] then
       seen[key], result[#result + 1] = true, value
     end

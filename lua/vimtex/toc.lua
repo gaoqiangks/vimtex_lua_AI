@@ -128,11 +128,12 @@ function M.print_number(number, toc)
     number.subsubsection,
     number.subsubsubsection,
   }
-  while #values > 0 and values[1] == 0 do
-    table.remove(values, 1)
+  local first, last = 1, #values
+  while first <= last and values[first] == 0 do
+    first = first + 1
   end
-  while #values > 0 and values[#values] == 0 do
-    table.remove(values)
+  while last >= first and values[last] == 0 do
+    last = last - 1
   end
   if
     (toc.topmatters or 0) > 1
@@ -140,10 +141,10 @@ function M.print_number(number, toc)
   then
     return ""
   end
-  if (number.appendix == 1 or number.appendix == true) and values[1] then
-    values[1] = string.char(values[1] + 64)
+  if (number.appendix == 1 or number.appendix == true) and values[first] then
+    values[first] = string.char(values[first] + 64)
   end
-  return table.concat(values, ".")
+  return table.concat(values, ".", first, last)
 end
 
 local function set_number_format(toc)

@@ -22,8 +22,13 @@ function M.toc(state)
     default = { entries = {}, ftime = -1 },
   })
   local current = store:get(state.tex)
-  local file_time = state == vim.b.vimtex and vim.fn.eval "b:vimtex.getftime()"
-    or vim.fn.getftime(state.tex)
+  local file_time
+  if state == vim.b.vimtex then
+    file_time = state.getftime()
+  else
+    local stat = vim.uv.fs_stat(state.tex)
+    file_time = stat and (stat.mtime.sec + stat.mtime.nsec / 1e9) or -1
+  end
   if file_time > current.ftime then
     current.ftime = file_time
     current.entries = toc.parse(state.tex)

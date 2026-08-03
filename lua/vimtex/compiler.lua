@@ -197,28 +197,34 @@ function base.exec(self, command)
   self.job = vim.fn.jobstart(command, options)
 end
 
+local compiler_statuses = {
+  vimtex_compiler_callback_compiling = 1,
+  vimtex_compiler_callback_success = 2,
+  vimtex_compiler_callback_failure = 3,
+}
+
 function base._on_output(self, data)
-  local lines = vim.tbl_filter(function(line)
-    return line ~= ""
-  end, data or {})
+  local lines = {}
+  for _, line in ipairs(data or {}) do
+    if line ~= "" then
+      lines[#lines + 1] = line
+    end
+  end
   if #lines > 0 then
     vim.fn.writefile(lines, self.output, "a")
   end
   for _, line in ipairs(lines) do
-    local statuses = {
-      vimtex_compiler_callback_compiling = 1,
-      vimtex_compiler_callback_success = 2,
-      vimtex_compiler_callback_failure = 3,
-    }
-    if statuses[line:gsub("\r", "")] then
-      M.callback(statuses[line:gsub("\r", "")])
+    local status = compiler_statuses[line:gsub("\r", "")]
+    if status then
+      M.callback(status)
     end
   end
+  local output = table.concat(lines, "\n")
   for _, hook in ipairs(self.hooks or {}) do
     if type(hook) == "function" then
-      hook(table.concat(lines, "\n"))
+      hook(output)
     else
-      pcall(vim.fn.call, hook, { table.concat(lines, "\n") })
+      pcall(vim.fn.call, hook, { output })
     end
   end
 end
@@ -230,8 +236,8 @@ function base.start(self, passed)
   self:create_dirs()
   vim.fn.writefile({}, self.output, "a")
   self.cmd = self:__build_cmd(passed or "")
-  local jobname = vim.fn.matchstr(self.cmd, [[-jobname=\zs\S*]])
-  self.file_info.jobname = jobname ~= "" and jobname
+  local jobname = self.cmd:match "%-jobname=(%S+)"
+  self.file_info.jobname = jobname and jobname ~= "" and jobname
     or self.file_info.target_name
   self:exec { "sh", "-c", self.cmd }
   self.status = 1
@@ -308,11 +314,18 @@ local function read_rc_file(path)
   return lines
 end
 
-local rc_patterns = {
-  [0] = [=[^\s*\$%s\s*=\s*['"]\(.\+\)['"]]=],
-  [1] = [=[^\s*\$%s\s*=\s*\(\d\+\)]=],
-  [2] = [=[^\s*@%s\s*=\s*(\(.*\))]=],
-}
+local rc_kinds = { [0] = true, [1] = true, [2] = true }
+
+local function match_rc_value(line, option, kind)
+  option = vim.pesc(option)
+  if kind == 0 then
+    return line:match("^%s*%$" .. option .. "%s*=%s*['\"](.+)['\"]")
+  elseif kind == 1 then
+    return line:match("^%s*%$" .. option .. "%s*=%s*(%d+)")
+  elseif kind == 2 then
+    return line:match("^%s*@" .. option .. "%s*=%s*%((.*)%)")
+  end
+end
 
 local function parse_rc_value(value, kind)
   if kind == 1 then
@@ -328,7 +341,7 @@ end
 local function rc_opts(root, specs)
   local results, unresolved = {}, #specs
   for index, spec in ipairs(specs) do
-    if not rc_patterns[spec.kind] then
+    if not rc_kinds[spec.kind] then
       error "VimTeX: Argument error"
     end
     results[index] = { spec.default, -1 }
@@ -347,11 +360,10 @@ local function rc_opts(root, specs)
       for _, line in ipairs(lines) do
         for index, spec in ipairs(specs) do
           if results[index][2] == -1 then
-            local found =
-              vim.fn.matchlist(line, rc_patterns[spec.kind]:format(spec.option))
-            if #found > 1 then
+            local found = match_rc_value(line, spec.option, spec.kind)
+            if found then
               results[index] = {
-                parse_rc_value(found[2], spec.kind),
+                parse_rc_value(found, spec.kind),
                 item[2],
               }
               unresolved = unresolved - 1

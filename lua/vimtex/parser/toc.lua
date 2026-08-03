@@ -81,28 +81,62 @@ end
 
 local level = {}
 
-function level:reset(part, current)
-  if part == "preamble" then
-    self.old = {}
-  else
-    self.old[#self.old + 1] = vim.deepcopy(self)
-  end
+local level_names = {
+  "preamble",
+  "frontmatter",
+  "mainmatter",
+  "appendix",
+  "backmatter",
+  "part",
+  "chapter",
+  "section",
+  "subsection",
+  "subsubsection",
+  "subsubsubsection",
+  "paragraph",
+  "subparagraph",
+}
 
-  for _, name in ipairs {
-    "preamble",
-    "frontmatter",
-    "mainmatter",
-    "appendix",
-    "backmatter",
-    "part",
-    "chapter",
+local reset_after = {
+  chapter = {
     "section",
     "subsection",
     "subsubsection",
     "subsubsubsection",
     "paragraph",
     "subparagraph",
-  } do
+  },
+  section = {
+    "subsection",
+    "subsubsection",
+    "subsubsubsection",
+    "paragraph",
+    "subparagraph",
+  },
+  subsection = {
+    "subsubsection",
+    "subsubsubsection",
+    "paragraph",
+    "subparagraph",
+  },
+  subsubsection = { "subsubsubsection", "paragraph", "subparagraph" },
+  subsubsubsection = { "paragraph", "subparagraph" },
+  paragraph = { "subparagraph" },
+}
+
+function level:reset(part, current)
+  if part == "preamble" then
+    self.old = {}
+  else
+    self.old[#self.old + 1] = {
+      frontmatter = self.frontmatter,
+      mainmatter = self.mainmatter,
+      appendix = self.appendix,
+      backmatter = self.backmatter,
+    }
+  end
+
+  for _, name in ipairs(level_names) do
     self[name] = 0
   end
   self.current = current
@@ -112,33 +146,6 @@ end
 function level:increment(name)
   self.current = M.level(name)
   self.part_toggle = 0
-
-  local reset_after = {
-    chapter = {
-      "section",
-      "subsection",
-      "subsubsection",
-      "subsubsubsection",
-      "paragraph",
-      "subparagraph",
-    },
-    section = {
-      "subsection",
-      "subsubsection",
-      "subsubsubsection",
-      "paragraph",
-      "subparagraph",
-    },
-    subsection = {
-      "subsubsection",
-      "subsubsubsection",
-      "paragraph",
-      "subparagraph",
-    },
-    subsubsection = { "subsubsubsection", "paragraph", "subparagraph" },
-    subsubsubsection = { "paragraph", "subparagraph" },
-    paragraph = { "subparagraph" },
-  }
 
   if name == "part" then
     self.part = self.part + 1

@@ -7,9 +7,9 @@ local util = require "vimtex.util"
 
 function M.get_graphicspath(filename)
   local state = vim.b.vimtex
-  for _, root in
-    ipairs(vim.list_extend(vim.deepcopy(state.graphicspath or {}), { "." }))
-  do
+  local roots = state.graphicspath or {}
+  for index = 1, #roots + 1 do
+    local root = roots[index] or "."
     local candidate =
       vim.fn.simplify(state.root .. "/" .. root .. "/" .. filename)
     for _, suffix in ipairs { "", ".jpg", ".png", ".pdf" } do

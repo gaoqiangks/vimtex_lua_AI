@@ -19,14 +19,11 @@ end
 local function text_between(first, last, include)
   local line1, column1 = first.lnum, first.cnum - (include and 1 or 0)
   local line2, column2 = last.lnum, last.cnum - (include and 0 or 1)
-  local lines = vim.fn.getline(line1, line2)
+  local lines = vim.api.nvim_buf_get_lines(0, line1 - 1, line2, false)
   if #lines > 0 then
-    lines[1] = vim.fn.strpart(lines[1], column1)
-    lines[#lines] = vim.fn.strpart(
-      lines[#lines],
-      0,
-      line1 == line2 and column2 - column1 or column2
-    )
+    lines[1] = lines[1]:sub(column1 + 1)
+    local length = line1 == line2 and column2 - column1 or column2
+    lines[#lines] = lines[#lines]:sub(1, length)
   end
   return table.concat(lines, "\n")
 end
@@ -183,11 +180,12 @@ function M.change(new_name)
   end
   local line, column = command.pos_start.lnum, command.pos_start.cnum
   local cursor = pos.get_cursor()
+  local text = vim.fn.getline(line)
   vim.fn.setline(
     line,
-    vim.fn.strpart(vim.fn.getline(line), 0, column)
+    vim.fn.strpart(text, 0, column)
       .. new_name
-      .. vim.fn.strpart(vim.fn.getline(line), column + #command.name - 1)
+      .. vim.fn.strpart(text, column + #command.name - 1)
   )
   if #new_name < #command.name and cursor[3] > column + #new_name then
     cursor[3] = column + #new_name

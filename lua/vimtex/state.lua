@@ -174,29 +174,38 @@ local function latexmk_main()
   return ""
 end
 
-local function recurse_main(file, tried, input_regex)
+local function recurse_main(file, context, input_regex)
   file = vim.fn.fnamemodify(file, ":p")
-  if tried[file] or vim.fn.filereadable(file) == 0 then
+  if context.tried[file] or vim.fn.filereadable(file) == 0 then
     return {}
   end
-  tried[file] = true
+  context.tried[file] = true
   if file ~= current_file() and file_is_main(file) then
     return { file }
   end
   local basename = vim.fn.fnamemodify(file, ":t:r")
   local result = {}
-  for _, candidate in
-    ipairs(globpath_upwards("*.tex", vim.fn.fnamemodify(file, ":p:h")))
-  do
-    if not tried[candidate] then
-      for _, line in ipairs(util.readfile(candidate)) do
+  local directory = vim.fn.fnamemodify(file, ":p:h")
+  local candidates = context.candidates[directory]
+  if not candidates then
+    candidates = globpath_upwards("*.tex", directory)
+    context.candidates[directory] = candidates
+  end
+  for _, candidate in ipairs(candidates) do
+    if not context.tried[candidate] then
+      local lines = context.lines[candidate]
+      if not lines then
+        lines = util.readfile(candidate)
+        context.lines[candidate] = lines
+      end
+      for _, line in ipairs(lines) do
         if
           line:find(basename, 1, true)
           and vim.fn.match(line, input_regex) >= 0
         then
           vim.list_extend(
             result,
-            recurse_main(candidate, tried, vim.g["vimtex#re#tex_input"])
+            recurse_main(candidate, context, vim.g["vimtex#re#tex_input"])
           )
           break
         end
@@ -209,7 +218,7 @@ end
 local function recursive_candidates(from_bib)
   return recurse_main(
     current_file(),
-    {},
+    { tried = {}, lines = {}, candidates = {} },
     from_bib and vim.g["vimtex#re#bib_input"] or vim.g["vimtex#re#tex_input"]
   )
 end
@@ -379,22 +388,19 @@ function M.cleanup(id)
   if not state then
     return
   end
-  local ids = {}
+  local id_counts = {}
   for buffer = 1, vim.fn.bufnr "$" do
     if vim.fn.buflisted(buffer) == 1 then
-      table.insert(ids, vim.fn.getbufvar(buffer, "vimtex_id", -1))
+      local buffer_id = vim.fn.getbufvar(buffer, "vimtex_id", -1)
+      id_counts[buffer_id] = (id_counts[buffer_id] or 0) + 1
     end
   end
-  if
-    vim.tbl_count(vim.tbl_filter(function(value)
-      return value == id
-    end, ids)) > 1
-  then
+  if (id_counts[id] or 0) > 1 then
     return
   end
   if state.subids then
     for _, subid in ipairs(state.subids) do
-      if vim.tbl_contains(ids, subid) then
+      if id_counts[subid] then
         return
       end
     end

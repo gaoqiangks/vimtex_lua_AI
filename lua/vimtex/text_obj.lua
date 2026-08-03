@@ -86,8 +86,8 @@ function M.commands(inner, visual)
     if vim.tbl_isempty(command) then
       break
     end
-    local first = vim.deepcopy(command.pos_start)
-    local last = vim.deepcopy(command.pos_end)
+    local first = { unpack(command.pos_start) }
+    local last = { unpack(command.pos_end) }
     if inner then
       last.lnum = first.lnum
       last.cnum = first.cnum + #command.name - 1
@@ -105,8 +105,7 @@ function M.commands(inner, visual)
         break
       end
       if pos.smaller(old, command.pos_end) then
-        first, last =
-          vim.deepcopy(command.pos_start), vim.deepcopy(command.pos_end)
+        first, last = { unpack(command.pos_start) }, { unpack(command.pos_end) }
         if inner then
           last.lnum = first.lnum
           last.cnum = first.cnum + #command.name - 1

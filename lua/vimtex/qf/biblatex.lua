@@ -31,14 +31,19 @@ local function database_files(state)
   return files
 end
 
-local function key_line(key, filename)
-  if
-    vim.fn.filereadable(filename) == 0 or vim.fn.getfsize(filename) > 200000
-  then
+local function key_line(key, filename, context)
+  local stat = vim.uv.fs_stat(filename)
+  if not stat or stat.size > 200000 then
     return 0
   end
+  context.lines = context.lines or {}
+  local lines = context.lines[filename]
+  if not lines then
+    lines = util.readfile(filename)
+    context.lines[filename] = lines
+  end
   local result = 0
-  for line_number, line in ipairs(util.readfile(filename)) do
+  for line_number, line in ipairs(lines) do
     if vim.fn.match(line, [[^\s*@\w*{\s*\V]] .. key) >= 0 then
       result = line_number
     end
@@ -46,9 +51,9 @@ local function key_line(key, filename)
   return result
 end
 
-local function key_position(key, files)
-  for _, file in ipairs(files) do
-    local line = key_line(key, file)
+local function key_position(key, context)
+  for _, file in ipairs(context.files) do
+    local line = key_line(key, file, context)
     if line > 0 then
       return file, line
     end
@@ -68,13 +73,18 @@ local function filename(name, context)
   return context.bibfile or ""
 end
 
-local function entry_key(name, line, files)
-  for _, file in ipairs(files) do
+local function entry_key(name, line, context)
+  context.lines = context.lines or {}
+  for _, file in ipairs(context.files) do
     if vim.fn.fnamemodify(file, ":t") == name then
       local latest = ""
-      for _, text in
-        ipairs(vim.list_slice(util.readfile(file), 1, tonumber(line)))
-      do
+      local lines = context.lines[file]
+      if not lines then
+        lines = util.readfile(file)
+        context.lines[file] = lines
+      end
+      for index = 1, math.min(tonumber(line) or 0, #lines) do
+        local text = lines[index]
         if text:match "^@" then
           latest = text
         end
@@ -104,7 +114,7 @@ local function fix(entry, context)
       filename(vim.fn.fnamemodify(matches[2], ":t"), context),
       tonumber(matches[4])
     local key = entry.filename ~= ""
-        and entry_key(entry.filename, entry.lnum, context.files)
+        and entry_key(entry.filename, entry.lnum, context)
       or ""
     if entry.filename == "" then
       entry.filename = nil
@@ -122,14 +132,14 @@ local function fix(entry, context)
     local key = matches[2]
     entry.filename = filename(matches[3], context)
     entry.lnum, entry.text =
-      key_line(key, entry.filename),
+      key_line(key, entry.filename, context),
       ('biblatex: Duplicate entry key "%s"'):format(key)
     return
   end
   if entry.text:match "No driver for entry type" then
     local key = vim.fn.matchstr(entry.text, [[entry type '\v\zs.{-}\ze']])
     entry.text = "biblatex: Using fallback driver for '" .. key .. "'"
-    local file, line = key_position(key, context.files)
+    local file, line = key_position(key, context)
     if file then
       entry.filename, entry.lnum, entry.bufnr =
         filename(file, context), line, nil
@@ -158,7 +168,7 @@ local function fix(entry, context)
     entry.text = "biblatex: Entry with key '"
       .. key
       .. "' has non-ascii characters"
-    local file, line = key_position(key, context.files)
+    local file, line = key_position(key, context)
     if file then
       entry.filename, entry.lnum, entry.bufnr =
         filename(file, context), line, nil

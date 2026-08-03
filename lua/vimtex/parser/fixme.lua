@@ -12,14 +12,14 @@ function M.authors()
   end
 
   for _, line in ipairs(tex.parse_preamble(state.tex, {})) do
-    local match =
-      vim.fn.matchlist(line, [[\\FXRegisterAuthor\s*{\([^}]*\)}\s*{\([^}]*\)}]])
-    if #match > 0 then
-      if match[2] ~= "" then
-        commands[#commands + 1] = match[2]
+    local command, environment =
+      line:match "\\FXRegisterAuthor%s*{([^}]*)}%s*{([^}]*)}"
+    if command then
+      if command ~= "" then
+        commands[#commands + 1] = command
       end
-      if match[3] ~= "" then
-        environments[#environments + 1] = match[3]
+      if environment ~= "" then
+        environments[#environments + 1] = environment
       end
     end
   end

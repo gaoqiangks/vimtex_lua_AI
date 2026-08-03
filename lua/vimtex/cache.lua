@@ -1,4 +1,5 @@
 local paths = require "vimtex.paths"
+local util = require "vimtex.util"
 
 local M = {}
 
@@ -9,13 +10,18 @@ local initialized_directories = {}
 local Cache = {}
 Cache.__index = Cache
 
+local function get_mtime(path)
+  local stat = vim.uv.fs_stat(path)
+  return stat and stat.mtime.sec + stat.mtime.nsec / 1e9 or -1
+end
+
 local function root()
   if vim.g.vimtex_cache_root then
     return vim.g.vimtex_cache_root
   end
   local base = vim.env.XDG_CACHE_HOME
   if not base or base == "" then
-    base = vim.fn.expand "~/.cache"
+    base = (vim.env.HOME or "") .. "/.cache"
   end
   return base .. "/vimtex"
 end
@@ -25,7 +31,7 @@ local function local_name(name)
   local filename = type(state) == "table"
       and state.tex
       and vim.fn.fnamemodify(state.tex, ":r")
-    or vim.fn.expand "%:p:r"
+    or vim.api.nvim_buf_get_name(0):gsub("%.[^./\\]*$", "")
   filename = filename:gsub("%s+", "_"):gsub("[/\\:]", "%%")
   if #filename > 200 then
     filename = "%..." .. filename:sub(-200)
@@ -46,13 +52,14 @@ function Cache:read()
   if self.type == "volatile" then
     return
   end
-  local mtime = vim.fn.getftime(self.path)
+  local mtime = get_mtime(self.path)
   if mtime <= self.ftime then
     return
   end
 
   self.ftime = mtime
-  local contents = table.concat(vim.fn.readfile(self.path))
+  local lines = util.readfile(self.path)
+  local contents = table.concat(lines)
   if contents == "" then
     return
   end
@@ -118,7 +125,7 @@ function Cache:write(force)
   end
   local written = pcall(vim.fn.writefile, { encoded }, self.path)
   if written then
-    self.ftime = vim.fn.getftime(self.path)
+    self.ftime = get_mtime(self.path)
     self.modified = 0
   end
 end

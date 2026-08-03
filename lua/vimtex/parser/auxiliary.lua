@@ -63,12 +63,11 @@ local function parse_labels(file, prefix)
       and not original:find "tocindent%-?%d"
     then
       local tree = util.tex2tree(util.tex2unicode(original))
-      table.remove(tree, 1)
       if #tree >= 2 then
-        local name_tree = table.remove(tree, 1)
+        local name_tree = tree[2]
         local name = type(name_tree) == "table" and (name_tree[1] or "") or ""
         if name ~= "" then
-          local context = table.remove(tree, 1)
+          local context = tree[3]
           if type(context) == "table" and #context > 1 then
             local menu = ""
             local ok, label_type = pcall(function()
@@ -118,7 +117,7 @@ function M.labels()
   if type(state) ~= "table" or type(state.compiler) ~= "table" then
     return {}
   end
-  local files = { { vim.fn.eval [[b:vimtex.compiler.get_file('aux')]], "" } }
+  local files = { { state.compiler.get_file "aux", "" } }
   local local_state = vim.b.vimtex_local
   if
     type(local_state) == "table"

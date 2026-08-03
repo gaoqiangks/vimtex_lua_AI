@@ -66,13 +66,7 @@ local function fix_hbox(entry, log, root, cache)
   if not entry.text:match "Underfull" and not entry.text:match "Overfull" then
     return false
   end
-  local index
-  for i, line in ipairs(log) do
-    if line == entry.text then
-      index = i
-      break
-    end
-  end
+  local index = cache.text_index[entry.text]
   if not index then
     return false
   end
@@ -88,8 +82,8 @@ local function fix_hbox(entry, log, root, cache)
       break
     end
     level = level
-      + require("vimtex.util").count(log[line_number], ")")
-      - require("vimtex.util").count(log[line_number], "(")
+      + util.count(log[line_number], ")")
+      - util.count(log[line_number], "(")
     if line_number >= index - 1 or level <= 0 then
       file =
         vim.fn.matchstr(log[line_number], [[\v\(\zs\f+\ze\)?\s*%(\[\d+]?)?$]])
@@ -139,7 +133,13 @@ end
 
 function M.fix_paths(main, log_file)
   local quickfix, log = vim.fn.getqflist(), util.readfile(log_file)
-  local root, cache = vim.fn.fnamemodify(main, ":h"), { index = {}, paths = {} }
+  local root = vim.fn.fnamemodify(main, ":h")
+  local cache = { index = {}, paths = {}, text_index = {} }
+  for index, line in ipairs(log) do
+    if cache.text_index[line] == nil then
+      cache.text_index[line] = index
+    end
+  end
   for _, entry in ipairs(quickfix) do
     if
       entry.lnum > 0

@@ -3,14 +3,15 @@ local paths = require "vimtex.paths"
 
 function M.parse_optionlist(text)
   local options = vim.empty_dict()
-  for _, element in ipairs(vim.split(text or "", ",", { plain = true })) do
+  for element in ((text or "") .. ","):gmatch "(.-)," do
     element = vim.trim(element)
     if element ~= "" then
-      local pair = vim.split(element, "=", { plain = true })
-      if #pair == 1 then
+      local equal = element:find("=", 1, true)
+      if not equal then
         options[element] = true
-      elseif #pair == 2 then
-        local key, value = vim.trim(pair[1]), vim.trim(pair[2])
+      elseif not element:find("=", equal + 1, true) then
+        local key = vim.trim(element:sub(1, equal - 1))
+        local value = vim.trim(element:sub(equal + 1))
         if value:lower() == "true" then
           options[key] = true
         elseif value:lower() == "false" then
@@ -255,7 +256,10 @@ end
 function methods.getftime(self)
   local result = -1
   for _, file in ipairs(self.get_sources()) do
-    result = math.max(result, vim.fn.getftime(paths.join(self.root, file)))
+    local stat = vim.uv.fs_stat(paths.join(self.root, file))
+    if stat then
+      result = math.max(result, stat.mtime.sec + stat.mtime.nsec / 1e9)
+    end
   end
   return result
 end

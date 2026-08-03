@@ -749,7 +749,8 @@ function M.init()
   for name, default in pairs(defaults) do
     local current = vim.g[name]
     if current == nil then
-      vim.g[name] = vim.deepcopy(default)
+      vim.g[name] = type(default) == "table" and vim.deepcopy(default)
+        or default
     elseif type(default) == "table" and type(current) == "table" then
       vim.g[name] = vim.tbl_deep_extend("keep", current, default)
     end

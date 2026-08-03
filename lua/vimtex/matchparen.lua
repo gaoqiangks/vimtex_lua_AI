@@ -25,10 +25,14 @@ function M.highlight()
   end
   local pair = require("vimtex.delim").get_current_matching("all", "both")
   local current, corresponding = pair[1], pair[2]
-  if vim.fn.empty(current) == 1 then
+  if not current or next(current) == nil then
     return
   end
-  if vim.fn.empty(corresponding) == 1 or corresponding.match == "" then
+  if
+    not corresponding
+    or next(corresponding) == nil
+    or corresponding.match == ""
+  then
     return
   end
   local opening, closing = current, corresponding

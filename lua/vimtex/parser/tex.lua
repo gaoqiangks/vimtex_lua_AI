@@ -18,6 +18,11 @@ local function matches(text, pattern)
   return vim.fn.match(text, pattern) >= 0
 end
 
+local function get_mtime(file)
+  local stat = vim.uv.fs_stat(file)
+  return stat and (stat.mtime.sec + stat.mtime.nsec / 1e9) or -1
+end
+
 local function options(opts)
   return vim.tbl_extend(
     "force",
@@ -144,7 +149,7 @@ end
 
 local function parse_recursive(file, root, store)
   local current = store:get(file)
-  local file_time = vim.fn.getftime(file)
+  local file_time = get_mtime(file)
   if file_time > current.ftime then
     current.ftime = file_time
     parse_current(file, root, current)
@@ -165,7 +170,7 @@ end
 
 local function parse_files_recursive(file, root, store)
   local current = store:get(file)
-  local file_time = vim.fn.getftime(file)
+  local file_time = get_mtime(file)
   if file_time > current.ftime then
     current.ftime = file_time
     parse_current(file, root, current)
@@ -242,7 +247,7 @@ function M.parse_preamble(file, opts)
     default = { time = -2 },
   })
   local current = store:get(file)
-  local timestamp = math.min(os.time() - 60, vim.fn.getftime(file))
+  local timestamp = get_mtime(file)
   if timestamp > current.time then
     current.time = timestamp
     current.lines = parse_preamble_recursive(file, opts.root, {})

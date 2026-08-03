@@ -2,8 +2,6 @@ local M = {}
 local active = {}
 local next_id = 0
 
-local paths = require "vimtex.paths"
-
 local Job = {}
 Job.__index = Job
 
@@ -21,18 +19,20 @@ end
 
 local function clean_lines(output)
   local lines = vim.split(output or "", "\n", { plain = true })
-  while lines[1] == "" do
-    table.remove(lines, 1)
+  local first, last = 1, #lines
+  while first <= last and lines[first] == "" do
+    first = first + 1
   end
-  while lines[#lines] == "" do
-    table.remove(lines)
+  while last >= first and lines[last] == "" do
+    last = last - 1
   end
-  if vim.fn.has "win32" == 1 then
-    for index, line in ipairs(lines) do
-      lines[index] = line:gsub("\r$", "")
-    end
+  local result = {}
+  local windows = vim.fn.has "win32" == 1
+  for index = first, last do
+    result[#result + 1] = windows and lines[index]:gsub("\r$", "")
+      or lines[index]
   end
-  return lines
+  return result
 end
 
 function Job:start()
@@ -45,9 +45,6 @@ function Job:start()
     self.completed = true
   end)
   self.job = self.handle.pid
-  vim.wait(100, function()
-    return self.completed
-  end, 10)
   return self
 end
 
@@ -173,11 +170,22 @@ end
 
 function M.run(command, opts)
   opts = opts or {}
-  paths.pushd(opts.cwd or "")
-  local stdout = vim.fn.system(shell_command(command))
-  local code = vim.v.shell_error
-  paths.popd()
-  return { code = code, signal = 0, stdout = stdout, stderr = "" }
+  local cwd = opts.cwd
+  if cwd == "" then
+    cwd = nil
+  end
+  local result = vim
+    .system(shell_command(command), {
+      cwd = cwd,
+      text = true,
+    })
+    :wait()
+  return {
+    code = result.code,
+    signal = result.signal,
+    stdout = result.stdout or "",
+    stderr = result.stderr or "",
+  }
 end
 
 function M.capture(command, opts)

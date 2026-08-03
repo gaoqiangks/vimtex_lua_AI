@@ -436,6 +436,14 @@ end
 
 local parse_cache = {}
 
+local function copy_entries(entries)
+  local result = {}
+  for index, entry in ipairs(entries) do
+    result[index] = vim.tbl_extend("force", {}, entry)
+  end
+  return result
+end
+
 ---Parse the specified bibtex file
 ---The parser adheres to the format description found here:
 ---http://www.bibtex.org/Format/
@@ -455,13 +463,13 @@ function M.parse(filename, opts)
   local signature = stat.size .. ":" .. stat.mtime.sec .. ":" .. stat.mtime.nsec
   local cached = parse_cache[cache_key]
   if cached and cached.signature == signature then
-    return vim.deepcopy(cached.entries)
+    return copy_entries(cached.entries)
   end
   if backend == "bibtex" then
     local result = parse_with_bibtex(filename)
     parse_cache[cache_key] = {
       signature = signature,
-      entries = vim.deepcopy(result),
+      entries = copy_entries(result),
     }
     return result
   end
@@ -499,7 +507,7 @@ function M.parse(filename, opts)
   end
   parse_cache[cache_key] = {
     signature = signature,
-    entries = vim.deepcopy(result),
+    entries = copy_entries(result),
   }
   return result
 end

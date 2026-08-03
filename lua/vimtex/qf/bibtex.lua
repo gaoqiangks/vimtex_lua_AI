@@ -26,9 +26,15 @@ local function database_files(file, out_dir)
   return result
 end
 
-local function key_location(key, files)
-  for _, file in ipairs(files) do
-    for line_number, line in ipairs(util.readfile(file)) do
+local function key_location(key, context)
+  context.lines = context.lines or {}
+  for _, file in ipairs(context.files) do
+    local lines = context.lines[file]
+    if not lines then
+      lines = util.readfile(file)
+      context.lines[file] = lines
+    end
+    for line_number, line in ipairs(lines) do
       if vim.fn.match(line, [[^\s*@\w*{\s*\V]] .. key) >= 0 then
         return file, line_number
       end
@@ -49,7 +55,7 @@ local function fix_entry(entry, context)
     entry.bufnr = nil
     entry.text = more == "" and ('Missing "%s" in "%s"'):format(kind, key)
       or ('Missing "%s" in "%s" (%s)'):format(kind, key, more)
-    local file, line = key_location(key, context.files)
+    local file, line = key_location(key, context)
     if file then
       entry.filename, entry.lnum = file, line
     end
@@ -60,7 +66,7 @@ local function fix_entry(entry, context)
     local key = matches[2]
     entry.bufnr = nil
     entry.text = ('Entry type for "%s" isn\'t style-file defined'):format(key)
-    local file, line = key_location(key, context.files)
+    local file, line = key_location(key, context)
     if file then
       entry.filename, entry.lnum = file, line
     end

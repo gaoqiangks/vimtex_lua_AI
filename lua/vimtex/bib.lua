@@ -4,10 +4,13 @@ local util = require "vimtex.util"
 
 local M = {}
 
-local function compiler_file(extension)
-  return vim.api.nvim_eval(
-    ("b:vimtex.compiler.get_file('%s')"):format(extension)
-  )
+local function compiler_file(state, extension)
+  return state.compiler.get_file(extension)
+end
+
+local function get_mtime(file)
+  local stat = vim.uv.fs_stat(file)
+  return stat and stat.mtime.sec + stat.mtime.nsec / 1e9 or -1
 end
 
 local function validate(files)
@@ -40,7 +43,7 @@ local function manual_files(state)
   for _, source in ipairs(sources) do
     local file = project.root .. "/" .. source
     local current = store:get(file)
-    local mtime = vim.fn.getftime(file)
+    local mtime = get_mtime(file)
     if mtime > current.ftime then
       store.modified = true
       current.ftime = mtime
@@ -67,8 +70,9 @@ local function manual_files(state)
             if #files > 1 then
               files[#files + 1] = entry
             end
-            local initial = vim.deepcopy(files)
-            for _, expression in ipairs(initial) do
+            local initial_count = #files
+            for index = 1, initial_count do
+              local expression = files[index]
               if expression:find "[*?{[]" then
                 local ok, expanded = pcall(vim.fn.glob, expression, false, true)
                 if ok then
@@ -105,7 +109,7 @@ function M.files()
 
   if type(state.compiler) == "table" then
     if state.packages.biblatex then
-      local bcf = compiler_file "bcf"
+      local bcf = compiler_file(state, "bcf")
       if vim.fn.filereadable(bcf) == 1 then
         local bibs = {}
         for _, line in ipairs(util.readfile(bcf)) do
@@ -113,7 +117,9 @@ function M.files()
             bibs[#bibs + 1] = line:match "<[^>]*>([^<]*)" or ""
           end
         end
-        for _, file in ipairs(vim.deepcopy(bibs)) do
+        local initial_count = #bibs
+        for index = 1, initial_count do
+          local file = bibs[index]
           if file:find "[*?{[]" then
             vim.list_extend(bibs, vim.fn.glob(file, false, true))
           end
@@ -124,7 +130,7 @@ function M.files()
       end
     end
 
-    local blg = compiler_file "blg"
+    local blg = compiler_file(state, "blg")
     if vim.fn.filereadable(blg) == 1 then
       local bibs = {}
       for _, line in ipairs(util.readfile(blg)) do

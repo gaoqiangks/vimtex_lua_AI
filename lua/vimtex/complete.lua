@@ -11,6 +11,14 @@ local active
 local texmf_cache = {}
 local bib_candidate_cache = {}
 
+local function copy_candidates(candidates)
+  local result = {}
+  for index, candidate in ipairs(candidates) do
+    result[index] = vim.tbl_extend("force", {}, candidate)
+  end
+  return result
+end
+
 local function matches(text, regex, ignore_case)
   return vim.fn.match(text, (ignore_case and [=[\c]=] or [=[\C]=]) .. regex)
     >= 0
@@ -139,7 +147,7 @@ local function complete_bib(regex)
   local cached = bib_candidate_cache[project.tex]
   local result
   if cached and cached.signature == signature then
-    result = vim.deepcopy(cached.candidates)
+    result = copy_candidates(cached.candidates)
   else
     result = {}
     for _, file in ipairs(files) do
@@ -166,7 +174,7 @@ local function complete_bib(regex)
     end
     bib_candidate_cache[project.tex] = {
       signature = signature,
-      candidates = vim.deepcopy(result),
+      candidates = copy_candidates(result),
     }
   end
   paths.popd()
@@ -361,8 +369,9 @@ end
 
 local function complete_graphics(regex)
   local result, added = {}, {}
-  local roots = vim.deepcopy(vim.b.vimtex.graphicspath or {})
-  table.insert(roots, vim.b.vimtex.root)
+  local graphicspath = vim.b.vimtex.graphicspath or {}
+  local roots = { unpack(graphicspath) }
+  roots[#roots + 1] = vim.b.vimtex.root
   local generated = vim.b.vimtex.compiler
       and vim.b.vimtex.compiler.get_file "pdf"
     or ""

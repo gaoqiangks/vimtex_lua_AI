@@ -1,6 +1,7 @@
 local parser = require "vimtex.parser.bib"
 
 local M = {}
+local level_cache = { buffer = -1, tick = -1, levels = {} }
 
 local function count(text, character)
   local _, total = text:gsub(vim.pesc(character), "")
@@ -49,39 +50,43 @@ function M.init()
   vim.opt_local.foldtext = "v:lua.vimtex_fold_bib_text()"
 end
 
-function M.level(line_number)
-  local line = vim.api.nvim_buf_get_lines(
-    0,
-    line_number - 1,
-    line_number,
-    false
-  )[1] or ""
-  if vim.trim(line) == "" then
-    if line_number == 1 then
-      return 0
+local function refresh_levels()
+  local buffer = vim.api.nvim_get_current_buf()
+  local tick = vim.api.nvim_buf_get_changedtick(buffer)
+  if level_cache.buffer == buffer and level_cache.tick == tick then
+    return
+  end
+  local levels = {}
+  local opened, closed, firstline = 0, 0, 0
+  local lines = vim.api.nvim_buf_get_lines(buffer, 0, -1, false)
+  for line_number, line in ipairs(lines) do
+    if line:match "^%s*$" then
+      local previous = levels[line_number - 1]
+      levels[line_number] = previous == "<1" and 0 or previous or 0
+    else
+      local is_first = line:match "^%s*@" ~= nil
+      if is_first then
+        firstline = line_number
+        opened, closed = count(line, "{"), count(line, "}")
+      elseif firstline > 0 then
+        opened = opened + count(line, "{")
+        closed = closed + count(line, "}")
+      end
+      if firstline == 0 then
+        levels[line_number] = 0
+      elseif is_first then
+        levels[line_number] = opened > 0 and opened == closed and 0 or ">1"
+      else
+        levels[line_number] = opened == closed and "<1" or 1
+      end
     end
-    local previous = M.level(line_number - 1)
-    return previous == "<1" and 0 or previous
   end
+  level_cache = { buffer = buffer, tick = tick, levels = levels }
+end
 
-  local cursor = vim.api.nvim_win_get_cursor(0)
-  vim.api.nvim_win_set_cursor(0, { line_number, 0 })
-  local firstline = vim.fn.search([[^\s*@]], "bcnW")
-  vim.api.nvim_win_set_cursor(0, cursor)
-
-  if firstline == 0 then
-    return 0
-  end
-
-  local text = table.concat(
-    vim.api.nvim_buf_get_lines(0, firstline - 1, line_number, false)
-  )
-  local opened = count(text, "{")
-  local balanced = opened == count(text, "}")
-  if firstline == line_number then
-    return opened > 0 and balanced and 0 or ">1"
-  end
-  return balanced and "<1" or 1
+function M.level(line_number)
+  refresh_levels()
+  return level_cache.levels[line_number] or 0
 end
 
 function M.text()

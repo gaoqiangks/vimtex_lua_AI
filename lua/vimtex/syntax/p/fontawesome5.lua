@@ -2,11 +2,12 @@ local M = {}
 
 local function load_symbols()
   local file = require("vimtex.paths").asset "json/fontawesome.json"
-  return vim.json.decode(table.concat(vim.fn.readfile(file)))
+  local lines = require("vimtex.util").readfile(file)
+  return vim.json.decode(table.concat(lines))
 end
 
 local function cased(name)
-  return vim.fn.substitute(name, [[\v%(^|-)(.)]], [[\u\1]], "g")
+  return (name:gsub("^%l", string.upper):gsub("%-(%l)", string.upper))
 end
 
 function M.load(config)
@@ -23,17 +24,16 @@ function M.load(config)
   })
 
   local symbols = load_symbols()
+  local commands = {}
   for name, symbol in pairs(symbols.regular) do
     local pattern = [[\v\\fa]]
       .. cased(name)
       .. [[>%(\[\w*\])?|\\faIcon%(\[\w*\])?\{]]
       .. name
       .. [[\}]]
-    vim.cmd(
-      ([[syntax match texCmdFontawesome "%s" conceal cchar=%s]]):format(
-        pattern,
-        symbol
-      )
+    commands[#commands + 1] = ([[syntax match texCmdFontawesome "%s" conceal cchar=%s]]):format(
+      pattern,
+      symbol
     )
   end
   for name, symbol in pairs(symbols.starred) do
@@ -42,17 +42,17 @@ function M.load(config)
       .. [[\*%(\[\w*\])?|\\faIcon\*%(\[\w*\])?\{]]
       .. name
       .. [[\}]]
-    vim.cmd(
-      ([[syntax match texCmdFontawesome "%s" conceal cchar=%s]]):format(
-        pattern,
-        symbol
-      )
+    commands[#commands + 1] = ([[syntax match texCmdFontawesome "%s" conceal cchar=%s]]):format(
+      pattern,
+      symbol
     )
   end
-  vim.cmd [[syntax match texCmdFontawesome "\v\\faIcon%(\[\w*\])?\s*\{500px\}" conceal cchar=]]
-  vim.cmd "highlight def link texCmdFontawesome texCmd"
-  vim.cmd "highlight def link texFontawesomeArg texArg"
-  vim.cmd "highlight def link texFontawesomeOpt texOpt"
+  commands[#commands + 1] =
+    [[syntax match texCmdFontawesome "\v\\faIcon%(\[\w*\])?\s*\{500px\}" conceal cchar=]]
+  commands[#commands + 1] = "highlight def link texCmdFontawesome texCmd"
+  commands[#commands + 1] = "highlight def link texFontawesomeArg texArg"
+  commands[#commands + 1] = "highlight def link texFontawesomeOpt texOpt"
+  vim.cmd(table.concat(commands, "\n"))
 end
 
 return M

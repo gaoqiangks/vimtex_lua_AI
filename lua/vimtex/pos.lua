@@ -1,15 +1,18 @@
 local M = {}
 
 local function parse(...)
-  local args = { ... }
-  if #args > 1 then
-    return parse(args)
-  end
-  if #args == 0 then
+  local count = select("#", ...)
+  if count == 0 then
     return nil, nil
   end
 
-  local value = args[1]
+  if count == 2 then
+    return ...
+  elseif count > 2 then
+    return select(2, ...), select(3, ...)
+  end
+
+  local value = ...
   if type(value) == "table" and value.lnum ~= nil then
     return value.lnum, value.cnum
   end

@@ -516,12 +516,12 @@ constructors.sections = function(cfg)
     object.re.sections .. [[\*?\s*\[\zs.*]]
   object.re.fold_re = [[\\%(]]
     .. table.concat(
-      vim.list_extend(vim.deepcopy(object.parts), object.sections),
+      vim.list_extend({ unpack(object.parts) }, object.sections),
       "|"
     )
     .. ")"
   function object:refresh()
-    local time = vim.fn.getftime(vim.fn.expand "%")
+    local time = vim.api.nvim_buf_get_changedtick(0)
     if time == self.time then
       return
     end

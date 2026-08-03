@@ -10,9 +10,11 @@ function M.stack(line, column)
   end
   line, column = math.max(line, 1), math.max(column, 1)
 
-  return vim.tbl_map(function(id)
-    return vim.fn.synIDattr(id, "name")
-  end, vim.fn.synstack(line, column))
+  local result = {}
+  for _, id in ipairs(vim.fn.synstack(line, column)) do
+    result[#result + 1] = vim.fn.synIDattr(id, "name")
+  end
+  return result
 end
 
 function M.in_group(name, line, column)

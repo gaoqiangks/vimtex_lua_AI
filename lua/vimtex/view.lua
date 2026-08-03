@@ -96,7 +96,7 @@ local function generic_start(self, output)
 end
 
 local function make(method, state)
-  local self = vim.tbl_extend("force", vim.deepcopy(viewer), {
+  local self = vim.tbl_extend("force", {}, viewer, {
     method = method,
     name = method,
     compiler = state.compiler,

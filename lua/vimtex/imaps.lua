@@ -62,7 +62,7 @@ local function create_map(map, maps, contexts)
       return
     end
   end
-  local copy = vim.deepcopy(map)
+  local copy = vim.tbl_extend("force", {}, map)
   local leader = copy.leader or vim.g.vimtex_imaps_leader
   local lhs = leader .. copy.lhs
   if copy.context then

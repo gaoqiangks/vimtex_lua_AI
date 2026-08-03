@@ -32,17 +32,15 @@ function M.get_entry(key)
   end
 
   paths.pushd(vim.b.vimtex.root)
-  local entries = {}
   for _, file in ipairs(bib.files()) do
-    vim.list_extend(entries, parser.parse(file))
-  end
-  paths.popd()
-
-  for _, entry in ipairs(entries) do
-    if entry.key == key then
-      return entry
+    for _, entry in ipairs(parser.parse(file)) do
+      if entry.key == key then
+        paths.popd()
+        return entry
+      end
     end
   end
+  paths.popd()
   return {}
 end
 
