@@ -168,6 +168,43 @@ local function take_leading_math_punctuation(text)
   return text:sub(first, index - 1), text:sub(index):gsub("^[ \t]*", "")
 end
 
+---Remove sentence punctuation at the end of display-math content.
+---@param text string
+---@return string remainder
+---@return string punctuation
+local function take_trailing_math_punctuation(text)
+  local remainder = text:gsub("[ \t]*$", "")
+  local punctuation = ""
+  while remainder ~= "" do
+    local found
+    for _, candidate in ipairs(math_punctuation) do
+      if remainder:sub(-#candidate) == candidate then
+        found = candidate
+        break
+      end
+    end
+    if not found then
+      break
+    end
+    remainder = remainder:sub(1, -#found - 1):gsub("[ \t]*$", "")
+    punctuation = found .. punctuation
+  end
+  return remainder, punctuation
+end
+
+local function inline_suffix(text)
+  local stripped = text:gsub("^[ \t]*", "")
+  if stripped == "" then
+    return ""
+  end
+  for _, punctuation in ipairs(math_punctuation) do
+    if vim.startswith(stripped, punctuation) then
+      return stripped
+    end
+  end
+  return " " .. stripped
+end
+
 function M.change_in_place(opening, closing, replacement)
   local before, after = split_line(closing)
   vim.fn.setline(closing.lnum, before .. replacement[2] .. after)
@@ -184,28 +221,29 @@ end
 
 function M.change_to_inline_math(opening, closing, replacement)
   local before, after = split_line(closing)
-  local punctuation
-  punctuation, after = take_leading_math_punctuation(after)
-  local close = punctuation .. replacement[2]
   if (before .. after):match "^%s*$" then
-    vim.fn.setline(
-      closing.lnum - 1,
-      (vim.fn.getline(closing.lnum - 1):gsub("%s*$", close))
-    )
+    local content, punctuation =
+      take_trailing_math_punctuation(vim.fn.getline(closing.lnum - 1))
+    vim.fn.setline(closing.lnum - 1, content .. replacement[2] .. punctuation)
     vim.cmd(closing.lnum .. "delete _")
     local nextline = vim.trim(vim.fn.getline(closing.lnum))
     if nextline ~= "" and not nextline:match "^\\end{" then
       vim.cmd((closing.lnum - 1) .. "join")
     end
   elseif before:match "^%s*$" then
+    local content, punctuation =
+      take_trailing_math_punctuation(vim.fn.getline(closing.lnum - 1))
     vim.fn.setline(
       closing.lnum - 1,
-      vim.fn.getline(closing.lnum - 1):gsub("%s*$", close)
-        .. after:gsub("^%s*", " ")
+      content .. replacement[2] .. punctuation .. inline_suffix(after)
     )
     vim.cmd(closing.lnum .. "delete _")
   else
-    vim.fn.setline(closing.lnum, before:gsub("%s*$", close) .. after)
+    local content, punctuation = take_trailing_math_punctuation(before)
+    vim.fn.setline(
+      closing.lnum,
+      content .. replacement[2] .. punctuation .. after
+    )
   end
   before, after = split_line(opening)
   if (before .. after):match "^%s*$" then
