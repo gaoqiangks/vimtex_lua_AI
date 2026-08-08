@@ -1275,6 +1275,14 @@ endfunction
 
 " }}}1
 function! VimtexSyntaxCore_new_env(cfg) abort " {{{1
+  " Syntax rules are buffer-local.  Keep their accumulated environment lists
+  " buffer-local as well; script-local lists grow once per opened TeX buffer
+  " and eventually produce enormous (or invalid) regular expressions.
+  if !exists('b:vimtex_syntax_custom_math_envs')
+    let b:vimtex_syntax_custom_math_envs = []
+    let b:vimtex_syntax_custom_math_envs_by_next = {}
+  endif
+
   let l:cfg = extend({
         \ 'name': '',
         \ 'region': '',
@@ -1313,17 +1321,17 @@ function! VimtexSyntaxCore_new_env(cfg) abort " {{{1
       let l:next = 'nextgroup=' . l:cfg.math_nextgroup . ' skipwhite skipnl'
     endif
 
-    if has_key(s:custom_math_envs_by_next, l:next)
-      let s:custom_math_envs_by_next[l:next] += [l:env_name]
+    if has_key(b:vimtex_syntax_custom_math_envs_by_next, l:next)
+      let b:vimtex_syntax_custom_math_envs_by_next[l:next] += [l:env_name]
       syntax clear texMathEnvBgnEnd
-      for [l:i_next, l:envs] in items(s:custom_math_envs_by_next)
+      for [l:i_next, l:envs] in items(b:vimtex_syntax_custom_math_envs_by_next)
         execute 'syntax match texMathEnvBgnEnd'
               \ '"\%#=1\\\%(begin\|end\){\%(' . join(l:envs, '\|') . '\)}"'
               \ 'contained contains=texCmdMathEnv'
               \ l:i_next
       endfor
     else
-      let s:custom_math_envs_by_next[l:next] = [l:env_name]
+      let b:vimtex_syntax_custom_math_envs_by_next[l:next] = [l:env_name]
       execute 'syntax match texMathEnvBgnEnd'
             \ '"\%#=1\\\%(begin\|end\){' . l:env_name . '}"'
             \ 'contained contains=texCmdMathEnv'
@@ -1331,18 +1339,18 @@ function! VimtexSyntaxCore_new_env(cfg) abort " {{{1
     endif
     let l:contains = 'contains=texMathEnvBgnEnd,@texClusterMath'
 
-    if ! empty(s:custom_math_envs)
+    if ! empty(b:vimtex_syntax_custom_math_envs)
       syntax clear texMathError
       syntax clear texMathZoneEnv
     endif
-    let s:custom_math_envs += [l:env_name]
+    let b:vimtex_syntax_custom_math_envs += [l:env_name]
     execute 'syntax match texMathError "\%#=1\\\%()\|]\|end{\%('
-        \ . join(s:custom_math_envs, '\|')
+        \ . join(b:vimtex_syntax_custom_math_envs, '\|')
         \ . '\|array\|[bBpvV]matrix\|split\|smallmatrix'
         \ . '\)}\)" display'
 
     execute 'syntax region texMathZoneEnv'
-          \ 'start="\%#=1\\begin{\z(' . join(s:custom_math_envs, '\|') . '\)}"'
+          \ 'start="\%#=1\\begin{\z(' . join(b:vimtex_syntax_custom_math_envs, '\|') . '\)}"'
           \ 'end="\\end{\z1}"'
           \ 'contains=texMathEnvBgnEnd,@texClusterMath'
           \ 'keepend'
@@ -1392,9 +1400,6 @@ function! VimtexSyntaxCore_new_env(cfg) abort " {{{1
           \ l:options
   endif
 endfunction
-
-let s:custom_math_envs = []
-let s:custom_math_envs_by_next = {}
 
 " }}}1
 
