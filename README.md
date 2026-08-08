@@ -194,6 +194,13 @@ to configure VimTeX to your liking. Users should read the documentation to
 learn the various configuration possibilities, but the below is a simple
 overview of some of the main aspects.
 
+This Lua implementation also provides optional compiler and clean
+notifications. Enable them with `let g:vimtex_notify_enabled = 1` (or
+`vim.g.vimtex_notify_enabled = 1` in Lua), and toggle them at runtime with
+`:VimtexNotifyToggle`. See `:help g:vimtex_notify` for spinner, timeout, and
+per-event controls. `nvim-notify` is used when available; otherwise the feature
+falls back to Neovim's built-in notification function.
+
 > [!CAUTION]
 >
 > **PLEASE** don't just copy this without reading the comments!

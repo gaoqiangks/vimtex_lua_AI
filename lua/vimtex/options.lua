@@ -136,6 +136,13 @@ local defaults = {
   vimtex_imaps_disabled = {},
   vimtex_imaps_enabled = 1,
   vimtex_imaps_leader = "`",
+  vimtex_notify = {
+    clean = true,
+    compile = true,
+    spinner = true,
+    timeout = 3000,
+  },
+  vimtex_notify_enabled = 0,
   vimtex_imaps_list = {
     {
       lhs = "0",

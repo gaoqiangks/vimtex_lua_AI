@@ -50,6 +50,7 @@ function M.setup()
   end, { nargs = "*" })
 
   require("vimtex.snacks").register()
+  require("vimtex.notify").setup()
 
   local group = vim.api.nvim_create_augroup("vimtex_main", { clear = true })
   vim.api.nvim_create_autocmd("VimLeavePre", {

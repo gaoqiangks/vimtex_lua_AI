@@ -2446,6 +2446,41 @@ OPTIONS                                                        *vimtex-options*
 
   Default value: 1
 
+*g:vimtex_notify_enabled*
+  Enable notifications for compiler progress/results and completed clean
+  operations. Notifications use `nvim-notify` when it is available and fall
+  back to |vim.notify()| otherwise. The setting can also be changed at runtime
+  with |:VimtexNotifyToggle|, |:VimtexNotifyEnable|, and
+  |:VimtexNotifyDisable|.
+
+  Default value: 0
+
+*g:vimtex_notify*
+  A dictionary that configures notifications. The supported keys are:
+
+    `compile` ~
+      Show compiler progress and result notifications.
+
+    `clean` ~
+      Show a notification after a clean operation completes.
+
+    `spinner` ~
+      Animate the compiler progress notification when the notification
+      backend supports replacement.
+
+    `timeout` ~
+      Display time in milliseconds for completed notifications.
+
+  Default value: >vim
+
+    let g:vimtex_notify = {
+          \ 'compile': v:true,
+          \ 'clean': v:true,
+          \ 'spinner': v:true,
+          \ 'timeout': 3000,
+          \ }
+<
+
 *g:vimtex_lint_chktex_ignore_warnings*
   A string variable of options to pass for `chktex` to specify to ignore
   certain warning messages.
@@ -3705,6 +3740,17 @@ COMMANDS                                                      *vimtex-commands*
 :VimtexInfo!              Show information that is stored by VimTeX about all
                           open LaTeX projects (available mostly for debug
                           purposes).
+
+                                             *:VimtexNotifyToggle*
+:VimtexNotifyToggle       Toggle compiler and clean notifications for the
+                          current Neovim process.
+
+                                             *:VimtexNotifyEnable*
+:VimtexNotifyEnable       Enable compiler and clean notifications.
+
+                                             *:VimtexNotifyDisable*
+:VimtexNotifyDisable      Disable compiler and clean notifications and stop
+                          any active spinner.
 
                                              *:VimtexDocPackage*
                                              *<plug>(vimtex-doc-package)*
