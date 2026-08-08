@@ -163,8 +163,11 @@ function M.setqflist(file)
   end
 end
 
-function M.open(force)
-  local ok, error_message = pcall(M.setqflist)
+function M.open(force, refresh)
+  local ok, error_message = true, nil
+  if refresh ~= false then
+    ok, error_message = pcall(M.setqflist)
+  end
   if not ok then
     if tostring(error_message):match "No log file found" then
       if force then

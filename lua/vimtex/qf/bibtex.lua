@@ -107,7 +107,7 @@ function M.addqflist(blg, out_dir, tex)
   if not blg or blg == "" or vim.fn.filereadable(blg) == 0 then
     return
   end
-  local saved = vim.opt_local.errorformat:get()
+  local saved = vim.bo.errorformat
   vim.opt_local.errorformat = errorformat
   require("vimtex.qf.util").caddfile(vim.fn.fnameescape(blg), saved)
   local title = vim.fn.getqflist { title = 1 }

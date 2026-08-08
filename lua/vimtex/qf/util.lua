@@ -1,8 +1,11 @@
 local M = {}
 
 function M.caddfile(file, errorformat)
-  vim.cmd("noautocmd caddfile " .. file)
+  local ok, message = pcall(vim.cmd, "noautocmd caddfile " .. file)
   vim.opt_local.errorformat = errorformat
+  if not ok then
+    error(message, 0)
+  end
 end
 
 return M

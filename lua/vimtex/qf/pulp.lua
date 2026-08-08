@@ -22,10 +22,17 @@ function M.addqflist(_, log)
       vim.fn.fnameescape(temporary)
     )
   )
-  local saved = vim.opt_local.errorformat:get()
+  local saved = vim.bo.errorformat
   vim.opt_local.errorformat = errorformat
-  require("vimtex.qf.util").caddfile(temporary, saved)
+  local ok, message = pcall(
+    require("vimtex.qf.util").caddfile,
+    vim.fn.fnameescape(temporary),
+    saved
+  )
   vim.fn.delete(temporary)
+  if not ok then
+    error(message, 0)
+  end
 end
 
 return M

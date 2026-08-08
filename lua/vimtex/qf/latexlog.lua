@@ -66,7 +66,13 @@ local function fix_hbox(entry, log, root, cache)
   if not entry.text:match "Underfull" and not entry.text:match "Overfull" then
     return false
   end
-  local index = cache.text_index[entry.text]
+  local indices = cache.text_indices[entry.text]
+  if not indices then
+    return false
+  end
+  local occurrence = (cache.text_occurrences[entry.text] or 0) + 1
+  cache.text_occurrences[entry.text] = occurrence
+  local index = indices[occurrence]
   if not index then
     return false
   end
@@ -134,10 +140,22 @@ end
 function M.fix_paths(main, log_file)
   local quickfix, log = vim.fn.getqflist(), util.readfile(log_file)
   local root = vim.fn.fnamemodify(main, ":h")
-  local cache = { index = {}, paths = {}, text_index = {} }
-  for index, line in ipairs(log) do
-    if cache.text_index[line] == nil then
-      cache.text_index[line] = index
+  local cache = {
+    index = {},
+    paths = {},
+    text_indices = {},
+    text_occurrences = {},
+  }
+  if #log < 10000 then
+    for _, entry in ipairs(quickfix) do
+      if entry.text:match "Underfull" or entry.text:match "Overfull" then
+        cache.text_indices[entry.text] = {}
+      end
+    end
+    for index, line in ipairs(log) do
+      if cache.text_indices[line] then
+        table.insert(cache.text_indices[line], index)
+      end
     end
   end
   for _, entry in ipairs(quickfix) do
@@ -170,7 +188,7 @@ function M.addqflist(tex, log)
   if not log or log == "" or vim.fn.filereadable(log) == 0 then
     error "VimTeX: No log file found"
   end
-  local saved = vim.opt_local.errorformat:get()
+  local saved = vim.bo.errorformat
   set_errorformat()
   require("vimtex.qf.util").caddfile(vim.fn.fnameescape(log), saved)
   M.fix_paths(tex, log)

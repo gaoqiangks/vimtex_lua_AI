@@ -189,14 +189,7 @@ function base.exec(self, command)
     options.on_exit = function()
       vim.schedule(function()
         if self.status ~= 0 then
-          M.callback(
-            2
-              + require("vimtex.qf").inquire(
-                self.file_info.target ~= vim.b.vimtex.tex
-                    and self.file_info.target
-                  or ""
-              )
-          )
+          M.callback_exit(self)
         end
       end)
     end
@@ -223,7 +216,7 @@ function base._on_output(self, data)
   for _, line in ipairs(lines) do
     local status = compiler_statuses[line:gsub("\r", "")]
     if status then
-      M.callback(status)
+      M.callback(status, self)
     end
   end
   local output = table.concat(lines, "\n")
@@ -735,12 +728,45 @@ function M.init_state(state)
   }
 end
 
-function M.callback(status)
+local function compiler_context(compiler)
+  if not compiler then
+    local state = require("vimtex.state").get(vim.b.vimtex_id)
+    return state or vim.b.vimtex, vim.api.nvim_get_current_buf()
+  end
+  for id, state in pairs(require("vimtex.state").get_all()) do
+    if state.compiler == compiler then
+      for _, buffer in ipairs(vim.api.nvim_list_bufs()) do
+        if
+          vim.api.nvim_buf_is_valid(buffer)
+          and vim.fn.getbufvar(buffer, "vimtex_id", -1) == id
+        then
+          return state, buffer
+        end
+      end
+      return
+    end
+  end
+end
+
+local function in_compiler_context(compiler, callback)
+  local state, buffer = compiler_context(compiler)
+  if not state then
+    return
+  end
+  if buffer and buffer ~= vim.api.nvim_get_current_buf() then
+    return vim.api.nvim_buf_call(buffer, function()
+      return callback(state)
+    end)
+  end
+  return callback(state)
+end
+
+local function callback(status, compiler, quickfix_updated)
   status = tonumber(status)
   if not status then
     return
   end
-  local compiler = vim.b.vimtex and vim.b.vimtex.compiler
+  compiler = compiler or (vim.b.vimtex and vim.b.vimtex.compiler)
   if not compiler then
     return
   end
@@ -757,12 +783,28 @@ function M.callback(status)
       vim.b.vimtex = state
       require("vimtex.syntax.packages").init()
     end
-    require("vimtex.qf").open(false)
+    require("vimtex.qf").open(false, not quickfix_updated)
+    vim.cmd "redrawstatus"
   end
   vim.api.nvim_exec_autocmds(
     "User",
     { pattern = events[status], modeline = false }
   )
+end
+
+function M.callback(status, compiler)
+  return in_compiler_context(compiler, function(state)
+    callback(status, compiler or state.compiler)
+  end)
+end
+
+function M.callback_exit(compiler)
+  return in_compiler_context(compiler, function(state)
+    local file = compiler.file_info.target ~= state.tex
+        and compiler.file_info.target
+      or ""
+    callback(2 + require("vimtex.qf").inquire(file), compiler, true)
+  end)
 end
 
 function M.get_output_clashes(compiler, states)

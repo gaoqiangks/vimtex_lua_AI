@@ -18,6 +18,8 @@ local function database_files(state)
       local file = vim.fn.matchstr(line, [[{\zs.*\ze}]])
       if vim.fn.filereadable(file) == 1 then
         table.insert(files, file)
+      elseif vim.fn.filereadable(state.root .. "/" .. file) == 1 then
+        table.insert(files, vim.fn.simplify(state.root .. "/" .. file))
       elseif vim.fn.filereadable(vim.fn.expand(file)) == 1 then
         table.insert(files, vim.fn.expand(file))
       else
@@ -70,7 +72,7 @@ local function filename(name, context)
       end
     end
   end
-  return context.bibfile or ""
+  return vim.fn.filereadable(name) == 1 and name or (context.bibfile or "")
 end
 
 local function entry_key(name, line, context)
@@ -129,6 +131,9 @@ local function fix(entry, context)
   if entry.text:match "WARN %- Duplicate entry" then
     local matches =
       vim.fn.matchlist(entry.text, [[\v: '(\S*)' in file '(.{-})']])
+    if #matches == 0 then
+      return
+    end
     local key = matches[2]
     entry.filename = filename(matches[3], context)
     entry.lnum, entry.text =
@@ -184,7 +189,7 @@ function M.addqflist(blg)
   then
     return
   end
-  local saved = vim.opt_local.errorformat:get()
+  local saved = vim.bo.errorformat
   vim.opt_local.errorformat = errorformat
   require("vimtex.qf.util").caddfile(vim.fn.fnameescape(blg), saved)
   local state = vim.b.vimtex
