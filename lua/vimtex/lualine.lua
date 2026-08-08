@@ -29,10 +29,11 @@ local function project(bufnr)
 end
 
 local function refresh()
-  vim.cmd "redrawstatus"
   local lualine = package.loaded.lualine
   if lualine and type(lualine.refresh) == "function" then
     pcall(lualine.refresh, { place = { "statusline" } })
+  else
+    vim.cmd "redrawstatus"
   end
 end
 
@@ -69,11 +70,11 @@ local function count_quickfix()
   return errors, warnings
 end
 
-local function update(status)
+local function update(status, bufnr)
   if not enabled() then
     return
   end
-  local key = project()
+  local key = project(bufnr)
   if not key then
     return
   end
@@ -166,8 +167,8 @@ function M.setup()
     vim.api.nvim_create_autocmd("User", {
       group = group,
       pattern = pattern,
-      callback = function()
-        update(status)
+      callback = function(args)
+        update(status, args.data and args.data.bufnr or args.buf)
       end,
     })
   end

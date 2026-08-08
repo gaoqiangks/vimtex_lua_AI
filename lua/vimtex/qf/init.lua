@@ -163,20 +163,22 @@ function M.setqflist(file)
   end
 end
 
-function M.open(force, refresh)
-  local ok, error_message = true, nil
-  if refresh ~= false then
-    ok, error_message = pcall(M.setqflist)
-  end
+function M.update(file)
+  return pcall(M.setqflist, file)
+end
+
+function M.present(force, ok, error_message)
+  ok = ok ~= false
   if not ok then
-    if tostring(error_message):match "No log file found" then
+    error_message = tostring(error_message)
+    if error_message:match "No log file found" then
       if force then
         require("vimtex.log").warning "No log file found"
       end
     else
       require("vimtex.log").error(
         "Something went wrong when parsing log files!",
-        tostring(error_message)
+        error_message
       )
     end
     if vim.g.vimtex_quickfix_mode > 0 then
@@ -184,6 +186,7 @@ function M.open(force, refresh)
     end
     return
   end
+
   if vim.tbl_isempty(vim.fn.getqflist()) then
     if force then
       require("vimtex.log").info "No errors!"
@@ -216,6 +219,14 @@ function M.open(force, refresh)
     end
     vim.cmd "redraw"
   end
+end
+
+function M.open(force, refresh)
+  local ok, error_message = true, nil
+  if refresh ~= false then
+    ok, error_message = M.update()
+  end
+  M.present(force, ok, error_message)
 end
 
 function M.toggle()

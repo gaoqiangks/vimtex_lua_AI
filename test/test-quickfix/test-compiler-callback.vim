@@ -13,11 +13,13 @@ local compiler = state.compiler
 vim.cmd "enew"
 local current = vim.api.nvim_get_current_buf()
 local event_buffer = -1
+local event_current = -1
 vim.api.nvim_create_autocmd("User", {
   pattern = "VimtexEventCompileSuccess",
   once = true,
   callback = function(args)
-    event_buffer = args.buf
+    event_buffer = args.data and args.data.bufnr or args.buf
+    event_current = vim.api.nvim_get_current_buf()
   end,
 })
 
@@ -30,6 +32,7 @@ for _, entry in ipairs(vim.fn.getqflist()) do
   counts[entry.type] = (counts[entry.type] or 0) + 1
 end
 assert(owner == event_buffer)
+assert(current == event_current)
 assert(current == vim.api.nvim_get_current_buf())
 assert(counts.E == 7, vim.inspect(counts))
 assert(counts.W == 18, vim.inspect(counts))

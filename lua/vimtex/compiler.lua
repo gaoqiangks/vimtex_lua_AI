@@ -754,21 +754,22 @@ local function in_compiler_context(compiler, callback)
     return
   end
   if buffer and buffer ~= vim.api.nvim_get_current_buf() then
-    return vim.api.nvim_buf_call(buffer, function()
+    local results = { vim.api.nvim_buf_call(buffer, function()
       return callback(state)
-    end)
+    end) }
+    return buffer, unpack(results)
   end
-  return callback(state)
+  return buffer, callback(state)
 end
 
-local function callback(status, compiler, quickfix_updated)
+local function callback_context(status, compiler, quickfix_updated)
   status = tonumber(status)
   if not status then
-    return
+    return nil
   end
   compiler = compiler or (vim.b.vimtex and vim.b.vimtex.compiler)
   if not compiler then
-    return
+    return nil
   end
   compiler.status = status
   local events = {
@@ -783,28 +784,46 @@ local function callback(status, compiler, quickfix_updated)
       vim.b.vimtex = state
       require("vimtex.syntax.packages").init()
     end
-    require("vimtex.qf").open(false, not quickfix_updated)
-    vim.cmd "redrawstatus"
+    if not quickfix_updated then
+      local ok, error_message = require("vimtex.qf").update()
+      return events[status], ok, error_message
+    end
+  end
+  return events[status], true
+end
+
+local function callback_finish(buffer, event, qf_ok, qf_error)
+  if not event then
+    return
+  end
+  if event ~= "VimtexEventCompiling" then
+    require("vimtex.qf").present(false, qf_ok, qf_error)
   end
   vim.api.nvim_exec_autocmds(
     "User",
-    { pattern = events[status], modeline = false }
+    { pattern = event, data = { bufnr = buffer }, modeline = false }
   )
 end
 
 function M.callback(status, compiler)
-  return in_compiler_context(compiler, function(state)
-    callback(status, compiler or state.compiler)
+  local buffer, event, qf_ok, qf_error = in_compiler_context(compiler, function(state)
+    return callback_context(status, compiler or state.compiler)
   end)
+  callback_finish(buffer, event, qf_ok, qf_error)
 end
 
 function M.callback_exit(compiler)
-  return in_compiler_context(compiler, function(state)
+  local buffer, event, qf_ok, qf_error = in_compiler_context(compiler, function(state)
     local file = compiler.file_info.target ~= state.tex
         and compiler.file_info.target
       or ""
-    callback(2 + require("vimtex.qf").inquire(file), compiler, true)
+    return callback_context(
+      2 + require("vimtex.qf").inquire(file),
+      compiler,
+      true
+    )
   end)
+  callback_finish(buffer, event, qf_ok, qf_error)
 end
 
 function M.get_output_clashes(compiler, states)
