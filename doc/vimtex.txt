@@ -2508,6 +2508,51 @@ OPTIONS                                                        *vimtex-options*
           \ }
 <
 
+*g:vimtex_lualine_enabled*
+  Enable tracking compiler status for the optional lualine component. This
+  does not enable, disable, or otherwise change |g:vimtex_notify_enabled|.
+
+  Default value: 1
+
+*g:vimtex_lualine*
+  A dictionary that configures the lualine compiler component. Add the
+  component to lualine with: >lua
+
+    require("lualine").setup({
+      sections = {
+        lualine_x = { require("vimtex.lualine").component() },
+      },
+    })
+<
+  The component stores status separately for every VimTeX project, so each
+  tab displays the status belonging to its current TeX buffer. Supported keys:
+
+    `show_counts` ~
+      Include error and warning counts in completed states.
+
+    `spinner_interval` ~
+      Spinner animation interval in milliseconds.
+
+    `success_icon`, `failure_icon`, `stopped_icon`, `compiling_icon` ~
+      Override the icons used for each state. When `compiling_icon` is unset,
+      an animated Braille spinner is used.
+
+    `colors` ~
+      A dictionary containing optional `compiling`, `success`, `failed`, and
+      `stopped` lualine color tables.
+
+  Default value: >lua
+
+    {
+      show_counts = true,
+      spinner_interval = 200,
+      success_icon = "✓",
+      failure_icon = "✗",
+      stopped_icon = "■",
+      colors = {},
+    }
+<
+
 *g:vimtex_lint_chktex_ignore_warnings*
   A string variable of options to pass for `chktex` to specify to ignore
   certain warning messages.

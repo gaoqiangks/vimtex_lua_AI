@@ -201,6 +201,20 @@ notifications. Enable them with `let g:vimtex_notify_enabled = 1` (or
 per-event controls. `nvim-notify` is used when available; otherwise the feature
 falls back to Neovim's built-in notification function.
 
+Compiler progress is also available as a project-aware lualine component. It
+keeps working across tab changes and does not alter the notification window:
+
+```lua
+require("lualine").setup({
+  sections = {
+    lualine_x = { require("vimtex.lualine").component() },
+  },
+})
+```
+
+It displays an animated `Compiling` indicator followed by the final error and
+warning counts. See `:help g:vimtex_lualine` for customization.
+
 > [!CAUTION]
 >
 > **PLEASE** don't just copy this without reading the comments!
