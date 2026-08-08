@@ -11,6 +11,15 @@ local function current_file()
   return vim.api.nvim_buf_get_name(0)
 end
 
+local function is_readable_file(file)
+  local stat = vim.uv.fs_stat(file)
+  return stat ~= nil and stat.type == "file"
+end
+
+local function has_glob_magic(path)
+  return path:find "[%*%?%[%]{}]" ~= nil
+end
+
 local function get_main_id(main)
   for id, state in pairs(states) do
     if state.tex == main then
@@ -20,24 +29,42 @@ local function get_main_id(main)
   return -1
 end
 
-local function globpath_upwards(expression, start)
-  local directories, path = {}, start
+local function files_upwards(suffix, start)
+  local result, path = {}, start
   while true do
-    table.insert(directories, vim.fn.fnameescape(path))
-    local parent = vim.fn.fnamemodify(path, ":h")
-    if parent == path then
+    local scanner = vim.uv.fs_scandir(path)
+    local matches = {}
+    if scanner then
+      while true do
+        local name, kind = vim.uv.fs_scandir_next(scanner)
+        if not name then
+          break
+        end
+        if
+          name:sub(1, 1) ~= "."
+          and name:sub(-#suffix) == suffix
+          and (
+            kind == "file"
+            or (
+              (kind == "link" or kind == nil)
+              and is_readable_file(paths.join(path, name))
+            )
+          )
+        then
+          matches[#matches + 1] = paths.join(path, name)
+        end
+      end
+    end
+    table.sort(matches)
+    vim.list_extend(result, matches)
+
+    local parent = vim.fs.dirname(path)
+    if not parent or parent == path then
       break
     end
     path = parent
   end
-  return vim.tbl_filter(function(file)
-    return vim.fn.filereadable(file) == 1
-  end, vim.fn.globpath(
-    table.concat(directories, ","),
-    expression,
-    false,
-    true
-  ))
+  return result
 end
 
 local function file_is_main(file)
@@ -103,12 +130,24 @@ end
 
 local function get_texroot()
   for _, line in ipairs(vim.api.nvim_buf_get_lines(0, 0, 20, false)) do
-    local pattern = vim.fn.matchstr(line, vim.g["vimtex#re#tex_input_root"])
+    -- Avoid crossing into Vim's regex engine for ordinary preamble lines.
+    -- The cheap plain-text filter cannot reject a valid TeX root directive.
+    local lower = line:lower()
+    local pattern = lower:find("tex", 1, true)
+        and lower:find("root", 1, true)
+        and vim.fn.matchstr(line, vim.g["vimtex#re#tex_input_root"])
+      or ""
     if pattern ~= "" then
       if not paths.is_abs(pattern) then
         pattern = vim.fn.simplify(vim.fn.expand "%:p:h" .. "/" .. pattern)
       end
-      local candidates = vim.fn.glob(pattern, false, true)
+      -- Most TeX root directives name one exact file.  Avoid Vim's general
+      -- glob machinery for that common case; it is noticeably more expensive
+      -- on WSL-mounted NTFS filesystems.  Keep glob support for patterns such
+      -- as `**/main.tex`.
+      local candidates = has_glob_magic(pattern)
+          and vim.fn.glob(pattern, false, true)
+        or (is_readable_file(pattern) and { pattern } or {})
       if #candidates > 0 then
         return choose(candidates)
       end
@@ -146,11 +185,9 @@ end
 
 local function latexmain()
   local result = ""
-  for _, marker in
-    ipairs(globpath_upwards("*.latexmain", vim.fn.expand "%:p:h"))
-  do
+  for _, marker in ipairs(files_upwards(".latexmain", vim.fn.expand "%:p:h")) do
     result = vim.fn.fnamemodify(marker, ":p:r")
-    if vim.fn.filereadable(result) == 1 then
+    if is_readable_file(result) then
       return result
     end
   end
@@ -191,7 +228,7 @@ local function recurse_main(file, context, input_regex)
   local directory = vim.fn.fnamemodify(file, ":p:h")
   local candidates = context.candidates[directory]
   if not candidates then
-    candidates = globpath_upwards("*.tex", directory)
+    candidates = files_upwards(".tex", directory)
     context.candidates[directory] = candidates
   end
   for _, candidate in ipairs(candidates) do
@@ -245,7 +282,7 @@ local function existing_project_main()
 end
 
 local function get_main()
-  if vim.b.vimtex_main and vim.fn.filereadable(vim.b.vimtex_main) == 1 then
+  if vim.b.vimtex_main and is_readable_file(vim.b.vimtex_main) then
     return vim.fn.fnamemodify(vim.b.vimtex_main, ":p"), "buffer variable", {}
   end
   local candidate = get_texroot()
