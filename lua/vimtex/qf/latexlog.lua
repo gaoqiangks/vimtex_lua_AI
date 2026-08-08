@@ -116,17 +116,24 @@ local function fix_hbox(entry, log, root, cache)
   return true
 end
 
-local function fix_invalid(entry, root)
+local function is_readable(file, cache)
+  if cache.readable[file] == nil then
+    cache.readable[file] = vim.fn.filereadable(file) == 1
+  end
+  return cache.readable[file]
+end
+
+local function fix_invalid(entry, root, cache)
   local info = vim.fn.getbufinfo(entry.bufnr)
   local file = info[1] and info[1].name or ""
-  if vim.fn.filereadable(file) == 1 then
+  if is_readable(file, cache) then
     return
   end
   file = vim.fn.fnamemodify(
     vim.fn.simplify(root .. "/" .. vim.fn.bufname(entry.bufnr)),
     ":."
   )
-  if vim.fn.filereadable(file) == 0 then
+  if not is_readable(file, cache) then
     return
   end
   local buffer = vim.fn.bufnr(file)
@@ -145,6 +152,7 @@ function M.fix_paths(main, log_file)
     paths = {},
     text_indices = {},
     text_occurrences = {},
+    readable = {},
   }
   if #log < 10000 then
     for _, entry in ipairs(quickfix) do
@@ -178,7 +186,7 @@ function M.fix_paths(main, log_file)
       entry.bufnr = buffer
     end
     if #log >= 10000 or not fix_hbox(entry, log, root, cache) then
-      fix_invalid(entry, root)
+      fix_invalid(entry, root, cache)
     end
   end
   vim.fn.setqflist(quickfix, "r")
