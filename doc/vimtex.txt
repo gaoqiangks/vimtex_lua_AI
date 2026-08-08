@@ -419,6 +419,21 @@ TeX root directive ~
         are multiple matches, then VimTeX will ask for input when the buffer
         is opened.
 
+Automatic TeX root directives ~
+  VimTeX can automatically insert a relative TeX root directive at the top of
+  an opened subfile after its main file has been identified. Enable this with
+  |g:vimtex_root_auto_add_enabled|. The insertion only changes the buffer; the
+  file is not written until it is saved normally.
+
+  Existing TeX root directives are never replaced. A shared file that may be
+  included by more than one main document can explicitly opt out with: >latex
+
+    % !TeX root = nil
+<
+  This sentinel prevents automatic insertion, but does not prevent VimTeX
+  from associating the buffer with a project through its other main-file
+  detection methods.
+
                                                                *vimtex-subfiles*
                                                                  *vimtex-import*
 Subfiles package ~
@@ -2394,6 +2409,18 @@ OPTIONS                                                        *vimtex-options*
   If this option is enabled, VimTeX will instead silently pick the first
   candidate without prompting. This may be useful e.g. in automated or
   non-interactive contexts where the blocking prompt is undesired.
+
+  Default value: 0
+
+*g:vimtex_root_auto_add_enabled*
+  When enabled, VimTeX inserts a relative `% !TeX root = ...` directive as the
+  first line of an opened TeX subfile after identifying its main document.
+  Main files, read-only buffers, and files that already contain a TeX root
+  directive are not changed. Use `% !TeX root = nil` to explicitly prevent the
+  insertion for a shared subfile.
+
+  The buffer is marked as modified, but VimTeX does not write it
+  automatically.
 
   Default value: 0
 

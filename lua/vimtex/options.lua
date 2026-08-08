@@ -501,6 +501,7 @@ local defaults = {
   vimtex_quickfix_method = "latexlog",
   vimtex_quickfix_mode = 2,
   vimtex_quickfix_open_on_warning = 1,
+  vimtex_root_auto_add_enabled = 0,
   vimtex_subfile_start_local = 0,
   vimtex_syntax_conceal = {
     accents = 1,
