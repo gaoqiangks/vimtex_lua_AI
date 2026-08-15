@@ -15,6 +15,7 @@ local errorformat = {
   "%+C{%m",
   "%C! %m",
   "%Z<argument> %m",
+  "%Z<recently read> %m",
   "%Cl.%l %m",
   "%+WLaTeX Font Warning: %.%#line %l%.%#",
   "%+WLaTeX Font Warning: %m",
