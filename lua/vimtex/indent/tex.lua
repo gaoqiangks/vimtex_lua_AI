@@ -364,7 +364,7 @@ function M.setup()
   vim.bo.autoindent = true
   vim.bo.indentexpr = "v:lua.vimtex_indent_tex_expr()"
   vim.bo.indentkeys =
-    [[!^F,o,O,0(,0),],},\&,0=\\item ,0=\\item[,0=\\else,0=\\fi,0=\\rangle,0=\\rbrace,0=\\rvert,0=\\rVert,0=\\rfloor,0=\\rceil,0=\\urcorner]]
+    [[!^F,o,O,0(,0),],},\&,0=\item,0=\else,0=\fi,0=\rangle,0=\rbrace,0=\rvert,0=\rVert,0=\rfloor,0=\rceil,0=\urcorner]]
 
   local not_backslash = vim.g["vimtex#re#not_bslash"]
   local lists = table.concat(vim.g.vimtex_indent_lists, [[\|]])
