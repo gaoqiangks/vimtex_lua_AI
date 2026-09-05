@@ -25,5 +25,18 @@ call v:lua.require('vimtex.test').keys("csebaz\<cr>}j.",
       \ '\end{baz}',
       \])
 
+" Esc cancels the change, even after entering a new environment name
+call v:lua.require('vimtex.test').keys("csebaz\<esc>",
+      \[
+      \ '\begin{foo}',
+      \ '  Foo',
+      \ '\end{foo}',
+      \],
+      \[
+      \ '\begin{foo}',
+      \ '  Foo',
+      \ '\end{foo}',
+      \])
+
 
 call v:lua.require('vimtex.test').finished()

@@ -1,5 +1,7 @@
 local M = {}
 
+local input_key_namespace = vim.api.nvim_create_namespace "vimtex_ui_input"
+
 local function chunks(input)
   if type(input) == "string" then
     return { { input, "VimtexMsg" } }
@@ -56,10 +58,28 @@ function M.input(options)
   if vim.g.vimtex_echo_verbose_input ~= 0 and options.info ~= "" then
     M.echo(options.info)
   end
-  if options.completion then
-    return vim.fn.input(options.prompt, options.text, options.completion)
+  local cancelled = false
+  vim.on_key(function(key)
+    if key == "\27" or key == "\3" then
+      cancelled = true
+    end
+  end, input_key_namespace)
+
+  local ok, input = pcall(function()
+    if options.completion then
+      return vim.fn.input(options.prompt, options.text, options.completion)
+    end
+    return vim.fn.input(options.prompt, options.text)
+  end)
+  vim.on_key(nil, input_key_namespace)
+
+  if cancelled then
+    return nil
   end
-  return vim.fn.input(options.prompt, options.text)
+  if not ok then
+    error(input)
+  end
+  return input
 end
 
 function M.get_number(maximum, digits, force_choice, do_echo)
