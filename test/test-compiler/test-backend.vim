@@ -19,9 +19,9 @@ function! RunTests(comp, list_opts)
   for l:opts in a:list_opts
     let g:vimtex_compiler_{a:comp} = l:opts
 
-    " Ensure there is no latexmk process before we start the test
+    " Stop only jobs owned by this test's Neovim instance.
     if a:comp ==# 'latexmk'
-      call system('pkill -f latexmk')
+      call v:lua.require('vimtex.compiler').stop_all()
     endif
 
     echo 'Testing compiler "' . a:comp . '"'

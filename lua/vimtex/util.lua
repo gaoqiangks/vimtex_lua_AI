@@ -244,14 +244,83 @@ function M.readfile(path)
   if not data or data == "" then
     return {}, data ~= nil
   end
-  local lines = vim.split(data, "\n", { plain = true })
-  if data:sub(-1) == "\n" then
-    table.remove(lines)
+  local lines = {}
+  local normalize = data:find "[\r%z]" ~= nil
+  local final_cr = data:sub(-1) == "\r"
+  if data:sub(-1) ~= "\n" then
+    data = data .. "\n"
   end
-  for index, line in ipairs(lines) do
-    lines[index] = line:gsub("\r$", ""):gsub("%z", "\n")
+  for line in data:gmatch "([^\n]*)\n" do
+    lines[#lines + 1] = normalize and line:gsub("\r$", ""):gsub("%z", "\n")
+      or line
+  end
+  if final_cr then
+    lines[#lines] = lines[#lines] .. "\r"
   end
   return lines, true
+end
+
+---Find files with the given extensions in one traversal, including symlinked
+---directories but excluding hidden entries, just like **/* in globpath().
+---Keep Vim's implementation when user glob filters need to be honored.
+function M.find_files(root, extensions, ignore_case)
+  local result = {}
+  if
+    vim.o.wildignore ~= ""
+    or vim.o.fileignorecase
+    or root:find "[%*%?%[%]{},]"
+  then
+    for _, file in ipairs(vim.fn.globpath(root, "**/*.*", false, true)) do
+      local extension = file:match "%.([^./]+)$" or ""
+      if
+        extensions[(ignore_case or vim.o.fileignorecase) and extension:lower() or extension]
+        and vim.fn.isdirectory(file) == 0
+      then
+        result[#result + 1] = file
+      end
+    end
+    return result
+  end
+  local active = {}
+  local function scan(directory, real)
+    real = real or vim.uv.fs_realpath(directory)
+    if not real or active[real] then
+      return
+    end
+    active[real] = true
+    local handle = vim.uv.fs_scandir(directory)
+    if handle then
+      while true do
+        local name, kind = vim.uv.fs_scandir_next(handle)
+        if not name then
+          break
+        end
+        if name:sub(1, 1) ~= "." then
+          local file = directory
+            .. (directory:sub(-1) == "/" and "" or "/")
+            .. name
+          local linked = kind == "link" or kind == nil
+          if linked then
+            local stat = vim.uv.fs_stat(file)
+            kind = stat and stat.type
+          end
+          if kind == "directory" then
+            scan(file, not linked and (real .. "/" .. name) or nil)
+          elseif kind == "file" then
+            local extension = name:match "%.([^.]*)$" or ""
+            if extensions[ignore_case and extension:lower() or extension] then
+              result[#result + 1] = file
+            end
+          end
+        end
+      end
+    end
+    active[real] = nil
+  end
+  local directory = root == "" and "." or root:gsub("/+$", "")
+  scan(directory == "" and "/" or directory)
+  table.sort(result)
+  return result
 end
 
 function M.count(line, pattern)

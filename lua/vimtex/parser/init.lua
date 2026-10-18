@@ -27,15 +27,9 @@ function M.toc(state)
     default = { entries = {}, ftime = -1 },
   })
   local current = store:get(state.tex)
-  local file_time
-  if state == vim.b.vimtex then
-    file_time = state.getftime()
-  else
-    local stat = vim.uv.fs_stat(state.tex)
-    file_time = stat and (stat.mtime.sec + stat.mtime.nsec / 1e9) or -1
-  end
-  if file_time > current.ftime then
-    current.ftime = file_time
+  local signature = tex.signature(state.tex, { root = state.root })
+  if signature ~= current.signature then
+    current.signature = signature
     current.entries = require("vimtex.parser.toc").parse(state.tex)
   end
   return vim.deepcopy(current.entries)

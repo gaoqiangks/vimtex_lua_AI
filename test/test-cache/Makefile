@@ -19,6 +19,5 @@ $(TESTS_KPSEWHICH):
 	@cd $@ && $(MYVIM) -u test.vim
 
 test-cleanup: $(TESTS_ALL)
-	@rm kpsewhich.json
-	@rm capture.json
+	@rm -f kpsewhich.json capture.json
 	@rm -f nvim_servernames.log

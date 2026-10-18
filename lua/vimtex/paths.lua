@@ -3,6 +3,8 @@ local M = {}
 local source = debug.getinfo(1, "S").source:sub(2)
 local root = vim.fs.dirname(vim.fs.dirname(vim.fs.dirname(source)))
 local stack = {}
+local windows = vim.fn.has "win32" == 1
+local has_shellslash = vim.fn.exists "+shellslash" == 1
 
 local function cd_command()
   if vim.fn.haslocaldir() == 1 then
@@ -19,16 +21,18 @@ function M.asset(name)
 end
 
 function M.pushd(path)
+  local current = vim.fn.getcwd()
   if
     not path
     or path == ""
-    or vim.fn.getcwd() == vim.fn.fnamemodify(path, ":p")
+    or current:gsub("[/\\]+$", "")
+      == vim.fn.fnamemodify(path, ":p"):gsub("[/\\]+$", "")
   then
     stack[#stack + 1] = ""
     return
   end
 
-  stack[#stack + 1] = vim.fn.getcwd()
+  stack[#stack + 1] = current
   vim.cmd(cd_command() .. " " .. vim.fn.fnameescape(path))
 end
 
@@ -44,14 +48,14 @@ function M.join(base, tail)
 end
 
 function M.s(path)
-  if vim.fn.exists "+shellslash" == 1 and not vim.o.shellslash then
+  if has_shellslash and not vim.o.shellslash then
     path = path:gsub("/", "\\")
   end
   return vim.fn.simplify(path)
 end
 
 function M.is_abs(path)
-  if vim.fn.has "win32" == 1 then
+  if windows then
     return path:match "^%a:[\\/]" ~= nil
   end
   return path:sub(1, 1) == "/"
@@ -67,7 +71,7 @@ function M.relative(path, current)
     return path:gsub("^%./", "", 1)
   end
 
-  if vim.fn.has "win32" == 1 then
+  if windows then
     target = target:gsub("^%a:", "", 1)
     common = common:gsub("^%a:", "", 1)
   end
@@ -75,7 +79,12 @@ function M.relative(path, current)
 
   local tries = 50
   local result = ""
-  while target:sub(1, #common) ~= common and tries > 0 do
+  while
+    common ~= "/"
+    and target ~= common
+    and target:sub(1, #common + 1) ~= common .. "/"
+    and tries > 0
+  do
     common = vim.fn.fnamemodify(common, ":h")
     result = result == "" and ".." or "../" .. result
     tries = tries - 1

@@ -15,6 +15,10 @@ and optimizing frequently used parsing and editing paths.
 
 ## Performance
 
+For a reproducible comparison of this implementation before and after the
+2026-10-19 performance audit, including cache-invalidation regression tests,
+see [the audit and benchmark instructions](test/test-performance/README.md).
+
 The following benchmarks compare this Lua implementation with the upstream
 Vimscript implementation installed on the same machine. The startup and TeX
 parser rows were rerun on 2026-08-09 with Lua commit `ddbe380`, upstream
@@ -122,10 +126,9 @@ smaller than this isolated VimTeX comparison.
 
 ## Requirements
 
-VimTeX requires Vim version 9.2 or Neovim version 0.12.4. The requirements
-were updated in July 2026 after the release of VimTeX 2.18. If you are stuck
-on older versions of Vim or Neovim, then you should not use the most recent
-version of VimTeX, but instead remain at the v2.17 tag (or older).
+VimTeX Lua requires Neovim 0.10 or later with its built-in Lua runtime.
+The upstream VimTeX version requirements and release tags do not apply to
+this rewrite.
 
 Some features require external tools. For example, the default compiler backend
 relies on [latexmk](https://www.cantab.net/users/johncollins/latexmk/index.html).

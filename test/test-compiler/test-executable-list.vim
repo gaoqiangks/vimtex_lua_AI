@@ -14,7 +14,7 @@ augroup test_executable_list
   autocmd User VimtexEventCompileFailed let g:status = 2
 augroup END
 
-silent edit test-builddir.tex
+silent edit test-executable-list.tex
 
 if empty($INMAKE) | finish | endif
 
@@ -27,9 +27,9 @@ while g:status < 1 && s:n < 100
 endwhile
 
 call assert_equal(1, g:status)
-call assert_true(filereadable('build/test-builddir.pdf'))
+call assert_true(filereadable('build/test-executable-list.pdf'))
 
 silent VimtexClean!
-call assert_false(filereadable('build/test-builddir.pdf'))
+call assert_false(filereadable('build/test-executable-list.pdf'))
 
 call v:lua.require('vimtex.test').finished()

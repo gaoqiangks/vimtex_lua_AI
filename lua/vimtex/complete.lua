@@ -186,15 +186,13 @@ local function complete_bib(regex)
         and (stat.size .. ":" .. stat.mtime.sec .. ":" .. stat.mtime.nsec)
       or "missing"
   end
-  local tex_stat = vim.uv.fs_stat(project.tex)
-  signature[#signature + 1] = tex_stat
-      and (tex_stat.size .. ":" .. tex_stat.mtime.sec .. ":" .. tex_stat.mtime.nsec)
-    or "missing"
+  signature[#signature + 1] =
+    require("vimtex.parser.tex").signature(project.tex, { root = project.root })
   signature = table.concat(signature, "\0")
   local cached = bib_candidate_cache[project.tex]
   local result
   if cached and cached.signature == signature then
-    result = copy_candidates(cached.candidates)
+    result = cached.candidates
   else
     result = {}
     for _, file in ipairs(files) do
@@ -221,14 +219,16 @@ local function complete_bib(regex)
     end
     cache_bib_candidates(project.tex, {
       signature = signature,
-      candidates = copy_candidates(result),
+      candidates = result,
     })
   end
   paths.popd()
   if vim.g.vimtex_complete_bib.simple == 1 then
-    return filter(result, regex)
+    return copy_candidates(filter(result, regex))
   end
-  return filter(result, regex, { anchor = false, key = "mstr" })
+  return copy_candidates(
+    filter(result, regex, { anchor = false, key = "mstr" })
+  )
 end
 
 local function complete_ref(regex, context)
@@ -451,12 +451,17 @@ end
 local function complete_commands(regex, kind)
   ensure_command_cache_invalidation()
   local project = require("vimtex.state").get(vim.b.vimtex_id)
-  local package_names = vim.tbl_keys(vim.b.vimtex.packages or {})
+  local state = vim.b.vimtex
+  local package_names = vim.tbl_keys(state.packages or {})
   table.sort(package_names)
   local signature = table.concat({
     tostring(command_candidate_generation),
-    tostring(vim.b.vimtex.documentclass or ""),
+    tostring(state.documentclass or ""),
     table.concat(package_names, "\0"),
+    require("vimtex.parser.tex").signature(
+      project.tex,
+      { root = project.root }
+    ),
   }, "\1")
   local cache_key = project.tex .. "\0" .. kind
   local cached = command_candidate_cache[cache_key]
@@ -481,34 +486,40 @@ local function complete_commands(regex, kind)
   return copy_candidates(filter(cached.candidates, regex))
 end
 
-local function files(pattern, root, transform, kind)
+local function files(extension, root, transform, kind)
   local result = {}
-  for _, file in ipairs(vim.fn.globpath(root, pattern, false, true)) do
+  for _, file in ipairs(util.find_files(root, { [extension] = true })) do
     table.insert(result, { word = transform(file), kind = kind })
   end
   return result
 end
 
 local function complete_graphics(regex)
-  local result, added = {}, {}
-  local graphicspath = vim.b.vimtex.graphicspath or {}
+  local result, added, searched = {}, {}, {}
+  local state = vim.b.vimtex
+  local graphicspath = state.graphicspath or {}
   local roots = { unpack(graphicspath) }
-  roots[#roots + 1] = vim.b.vimtex.root
-  local generated = vim.b.vimtex.compiler
-      and vim.b.vimtex.compiler.get_file "pdf"
-    or ""
+  roots[#roots + 1] = state.root
+  local generated = state.compiler and state.compiler.get_file "pdf" or ""
   local extensions =
     { png = true, jpg = true, eps = true, pdf = true, pgf = true, tikz = true }
   for _, root in ipairs(roots) do
-    for _, file in ipairs(vim.fn.globpath(root, "**/*.*", false, true)) do
-      local extension = file:lower():match "%.([^.]+)$"
-      if file ~= generated and not added[file] and extensions[extension] then
-        added[file] = true
-        table.insert(result, {
-          abbr = paths.shorten_relative(file),
-          word = paths.relative(file, root),
-          kind = "[graphics]",
-        })
+    root = root == "" and "." or root:gsub("/+$", "")
+    if root == "" then
+      root = "/"
+    end
+    if not searched[root] then
+      searched[root] = true
+      for _, file in ipairs(util.find_files(root, extensions, true)) do
+        if file ~= generated and not added[file] then
+          added[file] = true
+          local relative = paths.relative(file, state.root)
+          table.insert(result, {
+            abbr = #relative < #file and relative or file,
+            word = paths.relative(file, root),
+            kind = "[graphics]",
+          })
+        end
       end
     end
   end
@@ -516,11 +527,17 @@ local function complete_graphics(regex)
 end
 
 local function complete_include(regex, context)
-  local root, result = vim.b.vimtex.root, {}
-  local all = vim.fn.globpath(root, "**/*.tex", false, true)
-  if vim.b.vimtex.packages.tikz and not context:find "\\subfile" then
-    vim.list_extend(all, vim.fn.globpath(root, "**/*.tikz", false, true))
+  local state = vim.b.vimtex
+  local root, result = state.root, {}
+  local include_tikz = state.packages.tikz and not context:find "\\subfile"
+  local all, tikz = {}, {}
+  for _, file in
+    ipairs(util.find_files(root, { tex = true, tikz = include_tikz }))
+  do
+    local list = file:sub(-5) == ".tikz" and tikz or all
+    list[#list + 1] = file
   end
+  vim.list_extend(all, tikz)
   for _, file in ipairs(all) do
     local word = paths.relative(file, root)
     if context:find "\\include" then
@@ -614,7 +631,7 @@ local completers = {
     patterns = { [=[\v\\includepdf%(\s*\[[^]]*\])?\s*\{[^}]*$]=] },
     complete = function(regex)
       return filter(
-        files("**/*.pdf", vim.b.vimtex.root, function(file)
+        files("pdf", vim.b.vimtex.root, function(file)
           return paths.relative(file, vim.b.vimtex.root)
         end, "[includepdf]"),
         regex
@@ -625,7 +642,7 @@ local completers = {
     patterns = { [=[\v\\includestandalone%(\s*\[[^]]*\])?\s*\{[^}]*$]=] },
     complete = function(regex)
       return filter(
-        files("**/*.tex", vim.b.vimtex.root, function(file)
+        files("tex", vim.b.vimtex.root, function(file)
           return vim.fn.fnamemodify(
             paths.relative(file, vim.b.vimtex.root),
             ":r"

@@ -188,7 +188,10 @@ function base.exec(self, command)
   if self.continuous ~= 1 then
     options.on_exit = function()
       vim.schedule(function()
-        if self.status ~= 0 then
+        -- latexmk can already have reported its terminal status on stdout.
+        -- Re-parsing quickfix here duplicates notifications and can replace
+        -- success with failure when output paths are only in executable args.
+        if self.status == 1 then
           M.callback_exit(self)
         end
       end)
@@ -754,9 +757,11 @@ local function in_compiler_context(compiler, callback)
     return
   end
   if buffer and buffer ~= vim.api.nvim_get_current_buf() then
-    local results = { vim.api.nvim_buf_call(buffer, function()
-      return callback(state)
-    end) }
+    local results = {
+      vim.api.nvim_buf_call(buffer, function()
+        return callback(state)
+      end),
+    }
     return buffer, unpack(results)
   end
   return buffer, callback(state)
@@ -806,23 +811,29 @@ local function callback_finish(buffer, event, qf_ok, qf_error)
 end
 
 function M.callback(status, compiler)
-  local buffer, event, qf_ok, qf_error = in_compiler_context(compiler, function(state)
-    return callback_context(status, compiler or state.compiler)
-  end)
+  local buffer, event, qf_ok, qf_error = in_compiler_context(
+    compiler,
+    function(state)
+      return callback_context(status, compiler or state.compiler)
+    end
+  )
   callback_finish(buffer, event, qf_ok, qf_error)
 end
 
 function M.callback_exit(compiler)
-  local buffer, event, qf_ok, qf_error = in_compiler_context(compiler, function(state)
-    local file = compiler.file_info.target ~= state.tex
-        and compiler.file_info.target
-      or ""
-    return callback_context(
-      2 + require("vimtex.qf").inquire(file),
-      compiler,
-      true
-    )
-  end)
+  local buffer, event, qf_ok, qf_error = in_compiler_context(
+    compiler,
+    function(state)
+      local file = compiler.file_info.target ~= state.tex
+          and compiler.file_info.target
+        or ""
+      return callback_context(
+        2 + require("vimtex.qf").inquire(file),
+        compiler,
+        true
+      )
+    end
+  )
   callback_finish(buffer, event, qf_ok, qf_error)
 end
 

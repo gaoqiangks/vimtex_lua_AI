@@ -29,15 +29,18 @@ local function may_include(line)
     or line:find("\\loadglsentries", 1, true)
 end
 
-local function get_mtime(file)
+local function file_signature(file)
   local stat = vim.uv.fs_stat(file)
-  return stat and (stat.mtime.sec + stat.mtime.nsec / 1e9) or -1
+  return stat
+      and stat.type == "file"
+      and (stat.size .. ":" .. stat.mtime.sec .. ":" .. stat.mtime.nsec)
+    or "missing"
 end
 
 local function options(opts)
   return vim.tbl_extend(
     "force",
-    { detailed = true, root = root_default() },
+    { detailed = true, root = opts and opts.root or root_default() },
     opts or {}
   )
 end
@@ -158,46 +161,50 @@ local function parse_current(file, root, current)
   end
 end
 
-local function parse_recursive(file, root, store, active)
-  active = active or {}
+local function parse_recursive(file, root, store, active, parsed, detailed)
   if active[file] then
-    return {}
+    return
   end
   active[file] = true
   local current = store:get(root .. "\0" .. file)
-  local file_time = get_mtime(file)
-  if file_time > current.ftime then
-    current.ftime = file_time
+  local signature = file_signature(file)
+  if signature ~= current.signature then
+    current.signature = signature
     parse_current(file, root, current)
   end
-  local parsed = {}
   for _, value in ipairs(current.lines or {}) do
-    if vim.islist(value) then
-      parsed[#parsed + 1] = value
+    if value[1] then
+      parsed[#parsed + 1] = detailed and value or value[3]
     else
-      vim.list_extend(
+      parse_recursive(
+        value.file,
+        value.new_root,
+        store,
+        active,
         parsed,
-        parse_recursive(value.file, value.new_root, store, active)
+        detailed
       )
     end
   end
   active[file] = nil
-  return parsed
 end
 
-local function parse_files_recursive(file, root, store, active)
+local function parse_files_recursive(file, root, store, active, signatures)
   active = active or {}
   if active[file] then
     return {}
   end
   active[file] = true
   local current = store:get(root .. "\0" .. file)
-  local file_time = get_mtime(file)
-  if file_time > current.ftime then
-    current.ftime = file_time
+  local signature = file_signature(file)
+  if signature ~= current.signature then
+    current.signature = signature
     parse_current(file, root, current)
   end
-  if file_time < 0 then
+  if signatures then
+    signatures[#signatures + 1] = root .. "\0" .. file .. "\0" .. signature
+  end
+  if signature == "missing" then
     active[file] = nil
     return {}
   end
@@ -205,7 +212,13 @@ local function parse_files_recursive(file, root, store, active)
   for _, included in ipairs(current.includes or {}) do
     vim.list_extend(
       files,
-      parse_files_recursive(included.file, included.new_root, store, active)
+      parse_files_recursive(
+        included.file,
+        included.new_root,
+        store,
+        active,
+        signatures
+      )
     )
   end
   active[file] = nil
@@ -252,14 +265,15 @@ function M.parse(file, opts)
     persistent = false,
     default = { ftime = -2 },
   })
-  local parsed = parse_recursive(file, opts.root, store)
-  if opts.detailed == false or opts.detailed == 0 then
-    local lines = {}
-    for _, item in ipairs(parsed) do
-      lines[#lines + 1] = item[3]
-    end
-    return lines
-  end
+  local parsed = {}
+  parse_recursive(
+    file,
+    opts.root,
+    store,
+    {},
+    parsed,
+    opts.detailed ~= false and opts.detailed ~= 0
+  )
   return parsed
 end
 
@@ -273,11 +287,25 @@ function M.parse_files(file, opts)
   return util.uniq_unsorted(parse_files_recursive(file, opts.root, store))
 end
 
+---Fingerprint the complete inclusion tree without copying all its lines.
+---Unlike the maximum mtime, this detects deletion and restored/older files.
+function M.signature(file, opts)
+  opts = options(opts)
+  local store = cache.open("parser_tex", {
+    ["local"] = true,
+    persistent = false,
+    default = {},
+  })
+  local signatures = {}
+  parse_files_recursive(file, opts.root, store, {}, signatures)
+  return table.concat(signatures, "\0")
+end
+
 local function parse_preamble_recursive(file, root, parsed_files)
   if parsed_files[file] then
     return {}
   end
-  parsed_files[file] = true
+  parsed_files[file] = file_signature(file)
   local lines = {}
   read_lines_until(file, function(line)
     local has_command = line:find("\\", 1, true) ~= nil
@@ -300,7 +328,7 @@ end
 function M.parse_preamble(file, opts)
   opts = vim.tbl_extend(
     "force",
-    { root = root_default(), cached = false },
+    { root = opts and opts.root or root_default(), cached = false },
     opts or {}
   )
   local store = cache.open("parser_preamble", {
@@ -311,10 +339,17 @@ function M.parse_preamble(file, opts)
   if opts.cached and current.lines then
     return util.copy_list(current.lines)
   end
-  local timestamp = get_mtime(file)
-  if timestamp > current.time then
-    current.time = timestamp
-    current.lines = parse_preamble_recursive(file, opts.root, {})
+  local valid = current.dependencies ~= nil
+  for dependency, signature in pairs(current.dependencies or {}) do
+    if file_signature(dependency) ~= signature then
+      valid = false
+      break
+    end
+  end
+  if not valid then
+    current.dependencies = {}
+    current.lines =
+      parse_preamble_recursive(file, opts.root, current.dependencies)
   end
   return util.copy_list(current.lines or {})
 end

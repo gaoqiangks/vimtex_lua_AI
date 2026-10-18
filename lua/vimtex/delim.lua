@@ -200,6 +200,12 @@ end
 initialize()
 
 local pos = require "vimtex.pos"
+
+-- The generated alternatives contain many look-behind assertions. Neovim's
+-- NFA engine spends milliseconds allocating states even for plain prose.
+-- Select the backtracking engine at the call site (not in M.re, whose patterns
+-- are also embedded inside other expressions).
+local regex_engine = [[\%#=1]]
 local function timeout()
   local mode = vim.v.insertmode ~= "" and vim.v.insertmode or vim.fn.mode()
   return mode == "i" and vim.g.vimtex_delim_insert_timeout
@@ -344,15 +350,19 @@ local function parse_latex(context)
 end
 
 local function parse_math(context)
-  local open = vim.fn.match(context.match, M.re.delim_all.open) >= 0
+  local open = vim.fn.match(context.match, regex_engine .. M.re.delim_all.open)
+    >= 0
   local result = vim.tbl_extend("force", context, {
     type = "delim",
     side = open and "open" or "close",
     is_open = open,
   })
   result.gms_flags, result.gms_stopline = bounds(open)
-  if vim.fn.match(context.match, "^" .. M.re.mods.both) >= 0 then
-    local m1 = vim.fn.matchstr(context.match, "^" .. M.re.mods.both)
+  if
+    vim.fn.match(context.match, regex_engine .. "^" .. M.re.mods.both) >= 0
+  then
+    local m1 =
+      vim.fn.matchstr(context.match, regex_engine .. "^" .. M.re.mods.both)
     local d1 = context.match:sub(#m1 + 1):gsub("^%s*", "")
     local s1 = open and 0 or 1
     local re1 = re_for(m1, s1, "mods")
@@ -395,7 +405,8 @@ local function parse_math(context)
 end
 
 local function parse_unmatched(context)
-  local open = vim.fn.match(context.match, M.re.delim_all.open) >= 0
+  local open = vim.fn.match(context.match, regex_engine .. M.re.delim_all.open)
+    >= 0
   local result = vim.tbl_extend("force", context, {
     type = "delim",
     side = open and "open" or "close",
@@ -434,7 +445,7 @@ function M._get(opts)
           and math.max(vim.fn.line "." - vim.g.vimtex_delim_stopline, 1)
         or vim.fn.line "."
       )
-    local found = vim.fn.searchpos(regex, flags, stop)
+    local found = vim.fn.searchpos(regex_engine .. regex, flags, stop)
     line, column = found[1], found[2]
     if line == 0 then
       break
@@ -463,7 +474,14 @@ function M._get(opts)
     end
   end
   pos.set_cursor(saved)
-  local match = vim.fn.matchstr(vim.fn.getline(line), "^" .. regex, column - 1)
+  if line == 0 then
+    return {}
+  end
+  local match = vim.fn.matchstr(
+    vim.fn.getline(line),
+    regex_engine .. "^" .. regex,
+    column - 1
+  )
   if
     opts.direction == "current"
     and column + #match + (vim.fn.mode() == "i" and 1 or 0) <= vim.fn.col "."
@@ -485,7 +503,7 @@ function M._get(opts)
   if match:match [[^\left%s*%.]] or match:match [[^\right%s*%.]] then
     return parse_unmatched(context)
   end
-  if vim.fn.match(match, "^" .. M.re.delim_all.both) >= 0 then
+  if vim.fn.match(match, regex_engine .. "^" .. M.re.delim_all.both) >= 0 then
     return parse_math(context)
   end
   return {}
