@@ -234,6 +234,38 @@ local function bounds(is_open)
     )
 end
 
+local function tex_content_end(line)
+  local start = 1
+  while true do
+    local index = line:find("%", start, true)
+    if not index then
+      return #line
+    end
+    local slashes, cursor = 0, index - 1
+    while cursor > 0 and line:sub(cursor, cursor) == "\\" do
+      slashes, cursor = slashes + 1, cursor - 1
+    end
+    if slashes % 2 == 0 then
+      return index - 1
+    end
+    start = index + 1
+  end
+end
+
+local function comment_skip()
+  local cached_line, content_end
+  return function()
+    local cursor = vim.api.nvim_win_get_cursor(0)
+    if cursor[1] ~= cached_line then
+      cached_line = cursor[1]
+      content_end = tex_content_end(vim.api.nvim_get_current_line())
+    end
+    -- Do not call synID here: syntax synchronization can take arbitrarily
+    -- long inside a searchpairpos skip expression, blocking its timeout.
+    return cursor[2] >= content_end
+  end
+end
+
 local function search_pair(delimiter, skip)
   local limit = tonumber(timeout()) or 300
   if limit <= 0 then
@@ -579,11 +611,7 @@ function M.get_matching(delimiter)
     end
     vim.g._vimtex_delim_misses = nil
   elseif delimiter._parser == "math" then
-    match, line, column = matching_simple(
-      delimiter,
-      true,
-      [[synIDattr(synID(line("."), col("."), 0), "name") =~? "comment"]]
-    )
+    match, line, column = matching_simple(delimiter, true, comment_skip())
   else
     match, line, column = matching_simple(delimiter, false)
   end
@@ -621,24 +649,6 @@ local function allowed(opening, opts)
   local whitelist = (opts or {}).whitelist or {}
   return #whitelist == 0
     or vim.tbl_contains(whitelist, ((opening.name or ""):gsub("%*$", "")))
-end
-
-local function tex_content_end(line)
-  local start = 1
-  while true do
-    local index = line:find("%", start, true)
-    if not index then
-      return #line
-    end
-    local slashes, cursor = 0, index - 1
-    while cursor > 0 and line:sub(cursor, cursor) == "\\" do
-      slashes, cursor = slashes + 1, cursor - 1
-    end
-    if slashes % 2 == 0 then
-      return index - 1
-    end
-    start = index + 1
-  end
 end
 
 local function environment_token(line, lnum, start, finish, command, name)
