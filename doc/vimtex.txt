@@ -3964,6 +3964,22 @@ COMMANDS                                                      *vimtex-commands*
                                              *<plug>(vimtex-reload-state)*
 :VimtexReloadState        Reload the state for the current buffer.
 
+                                             *:VimtexNormalizeMath*
+:VimtexNormalizeMath      Normalize math throughout the current TeX buffer.
+                          Convert \(…\) and math environments to $…$, and
+                          \[…\], $$…$$, displaymath and equation* to numbered
+                          equation environments. Use |u| once to undo.
+
+                          align, flalign, alignat, xalignat, xxalignat, gather,
+                          multline and eqnarray (including starred variants)
+                          become one equation per block. An inner alignment
+                          keeps the columns and row breaks. This gives the
+                          block one number and can change horizontal spacing.
+                          Blocks with multiple labels, explicit numbering,
+                          inter-row text or special row layout are preserved
+                          and their line numbers reported. Comments and common
+                          verbatim environments and commands are skipped.
+
                                              *:VimtexCountLetters*
                                              *:VimtexCountWords*
                                              *vimtex#misc#wordcount(opts)*

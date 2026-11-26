@@ -516,6 +516,9 @@ local function prompt(kind)
 end
 
 function M.init_buffer()
+  vim.api.nvim_buf_create_user_command(0, "VimtexNormalizeMath", function()
+    require("vimtex.env.normalize").run()
+  end, { desc = "Normalize math delimiters in the current TeX buffer" })
   local actions = {
     ["<plug>(vimtex-env-change)"] = function()
       local name = prompt "normal"
