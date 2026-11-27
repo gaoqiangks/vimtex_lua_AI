@@ -516,6 +516,9 @@ local function prompt(kind)
 end
 
 function M.init_buffer()
+  if vim.bo.filetype == "tex" then
+    require("vimtex.env.paste").setup_buffer()
+  end
   vim.api.nvim_buf_create_user_command(0, "VimtexNormalizeMath", function()
     require("vimtex.env.normalize").run()
   end, { desc = "Normalize math delimiters in the current TeX buffer" })

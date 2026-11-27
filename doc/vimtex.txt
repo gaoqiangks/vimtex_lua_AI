@@ -3980,6 +3980,16 @@ COMMANDS                                                      *vimtex-commands*
                           and their line numbers reported. Comments and common
                           verbatim environments and commands are skipped.
 
+                                             *g:vimtex_env_normalize_on_paste*
+                          In TeX buffers, terminal/GUI paste via nvim_paste()
+                          and unmapped p, P, gp and gP also normalize complete
+                          formulas in the pasted text. Comments and verbatim
+                          are recognized using the surrounding document. Undo
+                          the paste and its conversion together with |u|.
+                          Blockwise register puts keep their rectangular text.
+                          Set g:vimtex_env_normalize_on_paste to 0 to disable
+                          automatic conversion. Default: 1.
+
                                              *:VimtexCountLetters*
                                              *:VimtexCountWords*
                                              *vimtex#misc#wordcount(opts)*

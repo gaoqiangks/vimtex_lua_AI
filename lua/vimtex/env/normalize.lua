@@ -63,7 +63,7 @@ local function next_nontrivia(text, pos)
   end
 end
 
-local function scan(text)
+local function scan(text, first_allowed)
   local edits, skipped, stack = {}, {}, {}
   local pos = 1
 
@@ -82,6 +82,9 @@ local function scan(text)
       return
     end
     stack[#stack] = nil
+    if frame.first < first_allowed then
+      return
+    end
     local pair = frame.pair
     if frame.skip then
       skipped[#skipped + 1] = frame.first
@@ -181,13 +184,57 @@ local function scan(text)
   return edits, skipped
 end
 
-function M.run()
-  local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
-  local edits, skipped = scan(table.concat(lines, "\n"))
+-- A native put leaves '] and often the cursor on its last character. Keep
+-- both at the new end even when the closing delimiter grows by several bytes.
+local ns = vim.api.nvim_create_namespace "vimtex_normalize_paste"
+local function track_paste_end(last)
+  local api = vim.api
+  local id = api.nvim_buf_set_extmark(0, ns, last[1], last[2], {})
+  local mark = api.nvim_buf_get_mark(0, "]")
+  local cursor = api.nvim_win_get_cursor(0)
+  local endline = api.nvim_buf_get_lines(0, last[1], last[1] + 1, true)[1]
+  local final_char = last[2] > 0
+    and last[2] - 1 + vim.str_utf_start(endline, last[2])
+  local mark_at_end = mark[1] == last[1] + 1
+    and (mark[2] == final_char or math.min(mark[2], #endline) == last[2])
+  return function()
+    local finish = api.nvim_buf_get_extmark_by_id(0, ns, id, {})
+    api.nvim_buf_del_extmark(0, ns, id)
+    local row, col = finish[1] + 1, finish[2]
+    if mark_at_end then
+      local mark_col = col
+      if mark[2] < last[2] and col > 0 then
+        local line = api.nvim_buf_get_lines(0, row - 1, row, true)[1]
+        mark_col = vim.str_utf_start(line, col) + col - 1
+      end
+      api.nvim_buf_set_mark(0, "]", row, mark_col, {})
+      if vim.deep_equal(cursor, mark) then
+        api.nvim_win_set_cursor(0, { row, mark_col })
+        return
+      end
+    end
+    if cursor[1] == last[1] + 1 and cursor[2] == last[2] then
+      api.nvim_win_set_cursor(0, { row, col })
+    end
+  end
+end
+
+-- A paste supplies a half-open range in zero-based buffer coordinates.
+-- Scan its prefix for TeX context, but only edit pairs wholly inside the range.
+local function normalize(first, last)
+  local lines =
+    vim.api.nvim_buf_get_lines(0, 0, last and last[1] + 1 or -1, true)
+  if last then
+    lines[#lines] = lines[#lines]:sub(1, last[2])
+  end
   local starts = { 1 }
   for i = 2, #lines do
     starts[i] = starts[i - 1] + #lines[i - 1] + 1
   end
+  local edits, skipped = scan(
+    table.concat(lines, "\n"),
+    first and starts[first[1] + 1] + first[2] or 1
+  )
   local function row(offset)
     local lo, hi = 1, #starts
     while lo < hi do
@@ -204,21 +251,25 @@ function M.run()
   table.sort(edits, function(a, b)
     return a[1] > b[1]
   end)
+  local restore_end = last and #edits > 0 and track_paste_end(last)
   for i, edit in ipairs(edits) do
-    local first, last = row(edit[1]), row(edit[2])
-    if i > 1 then
+    local start_row, end_row = row(edit[1]), row(edit[2])
+    if first or i > 1 then
       vim.cmd "undojoin"
     end
     vim.api.nvim_buf_set_text(
       0,
-      first - 1,
-      edit[1] - starts[first],
-      last - 1,
-      edit[2] - starts[last],
+      start_row - 1,
+      edit[1] - starts[start_row],
+      end_row - 1,
+      edit[2] - starts[end_row],
       { edit[3] }
     )
   end
-  if #skipped > 0 then
+  if restore_end then
+    restore_end()
+  end
+  if not first and #skipped > 0 then
     local rows = {}
     table.sort(skipped)
     for _, offset in ipairs(skipped) do
@@ -229,6 +280,24 @@ function M.run()
         .. table.concat(rows, ", ")
     )
   end
+end
+
+function M.range(first, last)
+  -- Most puts are ordinary text. Avoid scanning the document in that case.
+  for _, line in
+    ipairs(
+      vim.api.nvim_buf_get_text(0, first[1], first[2], last[1], last[2], {})
+    )
+  do
+    if line:find("\\", 1, true) or line:find("$$", 1, true) then
+      normalize(first, last)
+      return
+    end
+  end
+end
+
+function M.run()
+  normalize()
 end
 
 return M
